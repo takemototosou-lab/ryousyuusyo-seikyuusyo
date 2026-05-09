@@ -1,1102 +1,842 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>takemototosou 出勤日管理</title>
-    <style>
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        background: #f3f4f6;
-        color: #111827;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-
-      button,
-      input,
-      select {
-        font: inherit;
-      }
-
-      button {
-        cursor: pointer;
-      }
-
-      .page {
-        min-height: 100vh;
-        display: flex;
-        justify-content: center;
-        padding: 12px;
-      }
-
-      .app {
-        width: 100%;
-        max-width: 440px;
-        background: #ffffff;
-        border-radius: 24px;
-        padding: 16px;
-        box-shadow: 0 10px 32px rgba(15, 23, 42, 0.12);
-      }
-
-      .header,
-      .row,
-      .summary-total,
-      .card-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-      }
-
-      .nav-button {
-        min-width: 52px;
-        border: 1px solid #d1d5db;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 12px 14px;
-        font-size: 20px;
-        font-weight: 800;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 22px;
-        text-align: center;
-      }
-
-      .tabs {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin: 16px 0;
-        border-radius: 18px;
-        background: #f3f4f6;
-        padding: 5px;
-      }
-
-      .tab-button {
-        border: 0;
-        border-radius: 14px;
-        background: transparent;
-        color: #6b7280;
-        padding: 14px 0;
-        font-size: 18px;
-        font-weight: 800;
-      }
-
-      .tab-button.active {
-        background: #ffffff;
-        color: #111827;
-        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
-      }
-
-      .field {
-        margin-bottom: 14px;
-      }
-
-      label,
-      .label {
-        display: block;
-        margin-bottom: 6px;
-        color: #6b7280;
-        font-size: 14px;
-        font-weight: 700;
-      }
-
-      input,
-      select {
-        width: 100%;
-        border: 1px solid #d1d5db;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 14px;
-        font-size: 18px;
-      }
-
-      .calendar-head,
-      .calendar {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 7px;
-      }
-
-      .calendar-head {
-        margin: 10px 0 7px;
-        color: #6b7280;
-        font-size: 13px;
-        font-weight: 800;
-        text-align: center;
-      }
-
-      .week-sun {
-        color: #dc2626;
-      }
-
-      .week-sat {
-        color: #2563eb;
-      }
-
-      .calendar {
-        margin-bottom: 16px;
-      }
-
-      .blank-day {
-        min-height: 74px;
-      }
-
-      .day-button {
-        min-height: 74px;
-        border: 1px solid #e5e7eb;
-        border-radius: 15px;
-        background: #ffffff;
-        padding: 5px 3px;
-        text-align: center;
-        overflow: hidden;
-      }
-
-      .day-button.selected {
-        border-color: #3b82f6;
-        background: #dbeafe;
-      }
-
-      .day-button.saved {
-        border-color: #22c55e;
-        background: #ecfdf5;
-        box-shadow: 0 0 0 2px #86efac inset;
-      }
-
-      .day-number {
-        font-size: 16px;
-        font-weight: 900;
-      }
-
-      .day-week {
-        color: #6b7280;
-        font-size: 11px;
-      }
-
-      .day-mark {
-        font-size: 21px;
-        font-weight: 900;
-        line-height: 1.1;
-      }
-
-      .day-site {
-        overflow: hidden;
-        color: #6b7280;
-        font-size: 11px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .panel {
-        border: 1px solid #e5e7eb;
-        border-radius: 20px;
-        background: #f9fafb;
-        padding: 14px;
-      }
-
-      .panel-title {
-        margin: 0 0 12px;
-        font-size: 20px;
-        font-weight: 900;
-      }
-
-      .history-list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .history-empty,
-      .notice {
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 12px;
-        color: #6b7280;
-        font-size: 14px;
-      }
-
-      .history-item {
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 8px;
-      }
-
-      .site-select {
-        flex: 1;
-        min-width: 0;
-        border: 0;
-        background: transparent;
-        padding: 10px 8px;
-        overflow: hidden;
-        text-align: left;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 17px;
-        font-weight: 800;
-      }
-
-      .small-button {
-        border: 1px solid #d1d5db;
-        border-radius: 10px;
-        background: #ffffff;
-        padding: 10px 11px;
-        font-size: 14px;
-        font-weight: 800;
-      }
-
-      .danger {
-        color: #dc2626;
-      }
-
-      .mark-grid,
-      .invoice-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-      }
-
-      .invoice-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .choice-button {
-        border: 1px solid #d1d5db;
-        border-radius: 15px;
-        background: #ffffff;
-        padding: 15px 0;
-        color: #374151;
-        font-size: 20px;
-        font-weight: 900;
-      }
-
-      .choice-button.active.work {
-        border-color: #16a34a;
-        background: #16a34a;
-        color: #ffffff;
-      }
-
-      .choice-button.active.half {
-        border-color: #d97706;
-        background: #f59e0b;
-        color: #ffffff;
-      }
-
-      .choice-button.active.invoice-on {
-        border-color: #16a34a;
-        background: #16a34a;
-        color: #ffffff;
-      }
-
-      .choice-button.active.invoice-off {
-        border-color: #374151;
-        background: #374151;
-        color: #ffffff;
-      }
-
-      .save-preview {
-        border: 1px solid #d1d5db;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 12px;
-        font-size: 16px;
-      }
-
-      .save-button,
-      .line-button {
-        width: 100%;
-        border: 0;
-        border-radius: 18px;
-        color: #ffffff;
-        padding: 16px;
-        font-size: 19px;
-        font-weight: 900;
-      }
-
-      .save-button {
-        background: #2563eb;
-        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
-      }
-
-      .save-button.saved {
-        background: #16a34a;
-        box-shadow: 0 8px 18px rgba(22, 163, 74, 0.28);
-      }
-
-      .save-button.saving {
-        background: #f59e0b;
-        box-shadow: 0 8px 18px rgba(245, 158, 11, 0.28);
-        transform: scale(0.98);
-      }
-
-      .line-button {
-        margin-top: 14px;
-        background: #06c755;
-      }
-
-      .line-button:disabled {
-        background: #d1d5db;
-        cursor: not-allowed;
-      }
-
-      .saved-banner {
-        border: 2px solid #22c55e;
-        border-radius: 18px;
-        background: #ecfdf5;
-        color: #166534;
-        padding: 12px;
-        margin-bottom: 12px;
-        font-size: 16px;
-      }
-
-      .saved-banner strong {
-        display: block;
-        font-size: 19px;
-      }
-
-      .saved-message {
-        color: #15803d;
-        text-align: center;
-        font-size: 15px;
-        font-weight: 900;
-      }
-
-      .summary-box {
-        border-radius: 20px;
-        background: #eff6ff;
-        padding: 12px;
-      }
-
-      .summary-top {
-        margin-bottom: 12px;
-      }
-
-      .summary-top h2 {
-        margin: 0;
-        font-size: 22px;
-      }
-
-      .summary-card {
-        display: block;
-        border: 1px solid #e5e7eb;
-        border-radius: 18px;
-        background: #ffffff;
-        padding: 12px;
-        margin-bottom: 9px;
-      }
-
-      .summary-check {
-        width: 25px;
-        height: 25px;
-        flex: 0 0 auto;
-      }
-
-      .summary-main {
-        min-width: 0;
-        flex: 1;
-      }
-
-      .summary-site {
-        overflow: hidden;
-        font-size: 18px;
-        font-weight: 900;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .invoice-label {
-        flex: 0 0 auto;
-        font-size: 12px;
-        font-weight: 900;
-      }
-
-      .invoice-label.on {
-        color: #16a34a;
-      }
-
-      .invoice-label.off {
-        color: #6b7280;
-      }
-
-      .summary-stats {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 7px;
-        margin-top: 10px;
-      }
-
-      .stat {
-        border-radius: 12px;
-        background: #f9fafb;
-        padding: 8px;
-        font-size: 13px;
-      }
-
-      .stat b {
-        display: block;
-        margin-top: 2px;
-        font-size: 16px;
-      }
-
-      .invoice-detail {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: 6px;
-        margin-top: 8px;
-        font-size: 13px;
-      }
-
-      .amount-row {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 10px;
-        font-size: 17px;
-        font-weight: 900;
-      }
-
-      .summary-total {
-        border-top: 1px solid #bfdbfe;
-        margin-top: 12px;
-        padding-top: 12px;
-        font-size: 19px;
-        font-weight: 900;
-      }
-
-      .hidden {
-        display: none;
-      }
-    </style>
-  </head>
-
-  <body>
-    <main class="page">
-      <div class="app">
-        <div class="header">
-          <button class="nav-button" id="prevMonth" type="button">←</button>
-          <h1 id="monthTitle"></h1>
-          <button class="nav-button" id="nextMonth" type="button">→</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スマホ請求書・領収書アプリ</title>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #eef2f7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+      color: #1f2937;
+    }
+    .app { max-width: 1120px; margin: 0 auto; padding: 14px; }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 6px 18px rgba(15,23,42,.08);
+    }
+    h1, h2, h3 { color: #0f2f57; margin-top: 0; }
+    h1 { font-size: 22px; }
+    h3 { font-size: 17px; margin-bottom: 12px; }
+    .flex { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .between { justify-content: space-between; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .content-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .full-width { grid-column: 1 / -1; }
+    label { font-size: 13px; font-weight: 700; color: #334155; display: grid; gap: 6px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 16px;
+      background: #f8fafc;
+    }
+    input:focus, select:focus, textarea:focus { outline: 2px solid rgba(15,47,87,.18); background: #fff; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      background: #0f2f57;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(15,47,87,.22);
+    }
+    button.secondary { background: #fff; color: #0f2f57; border: 1px solid #cbd5e1; box-shadow: none; }
+    button.danger { background: #fff; color: #b91c1c; border: 1px solid #fecaca; box-shadow: none; }
+    .small-note { color:#64748b; font-size:12px; line-height:1.6; margin:8px 0 0; }
+
+    .item-editor { display: grid; gap: 8px; }
+    .item-row { display: grid; grid-template-columns: 2fr .8fr .8fr 1fr 1fr auto; gap: 8px; align-items: center; }
+    .item-head { font-size: 12px; font-weight: 800; color: #64748b; padding: 0 4px; }
+    .line-total { font-weight: 800; color: #0f2f57; text-align: right; white-space: nowrap; }
+    .remove-row { border-radius: 10px; padding: 10px 12px; }
+
+    .pages { display: grid; gap: 18px; }
+    .page.hidden-doc { display: none; }
+    .page {
+      background: #fff;
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(15,23,42,.12);
+      overflow: hidden;
+    }
+    .doc-top { border-top: 12px solid #0f2f57; padding-top: 18px; }
+    .doc-header { display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid #0f2f57; padding-bottom: 12px; }
+    .doc-title { font-size: 34px; letter-spacing: .22em; font-weight: 900; color: #0f2f57; }
+    .company-box { text-align: right; font-size: 12px; line-height: 1.6; }
+    .company-name { font-size: 20px; font-weight: 900; color: #0f2f57; }
+    .doc-meta { display: flex; justify-content: space-between; gap: 18px; margin: 20px 0; }
+    .customer-name { font-size: 22px; font-weight: 800; border-bottom: 1px solid #94a3b8; min-width: 260px; display: inline-block; padding-bottom: 6px; }
+    .meta-table { border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; min-width: 260px; font-size: 12px; }
+    .meta-table div { display: flex; border-bottom: 1px solid #e2e8f0; }
+    .meta-table div:last-child { border-bottom: 0; }
+    .meta-table span:first-child { width: 90px; background: #f1f5f9; padding: 7px; font-weight: 800; }
+    .meta-table span:last-child { flex: 1; padding: 7px; text-align: right; }
+    .amount-box { display: grid; grid-template-columns: 150px 1fr; border: 2px solid #0f2f57; border-radius: 14px; overflow: hidden; margin: 20px 0; }
+    .amount-label { background: #0f2f57; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+    .amount-value { font-size: 30px; font-weight: 900; padding: 14px 20px; text-align: right; }
+    .project-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; font-size: 13px; line-height: 1.7; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #0f2f57; color: #fff; text-align: left; padding: 9px 8px; }
+    td { border-bottom: 1px solid #e2e8f0; padding: 9px 8px; vertical-align: top; }
+    .num { text-align: right; white-space: nowrap; }
+    .center { text-align: center; }
+    .summary { width: 300px; margin-left: auto; margin-top: 12px; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; }
+    .summary div { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+    .summary div:last-child { background: #0f2f57; color: #fff; border-bottom: 0; font-size: 16px; font-weight: 900; }
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+    .info-box { border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; font-size: 12px; line-height: 1.7; min-height: 82px; }
+    .box-title { font-weight: 900; color: #0f2f57; margin-bottom: 4px; }
+
+    .popup { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 9999; }
+    .popup.open { display: flex; }
+    .popup-box { background: #fff; border-radius: 18px; padding: 18px; width: min(440px,100%); max-height: 82vh; overflow: auto; }
+    .popup-list { display: grid; gap: 8px; margin-top: 12px; }
+    .choice { width: 100%; text-align: left; border-radius: 12px; background: #f8fafc; color: #0f2f57; border: 1px solid #cbd5e1; box-shadow: none; }
+    .backup-item { border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+    .backup-main { display: grid; gap: 4px; }
+    .backup-customer { font-size: 17px; font-weight: 900; color: #0f2f57; }
+    .backup-amount { font-size: 20px; font-weight: 900; color: #111827; }
+    .backup-date { font-size: 13px; color: #64748b; }
+    .backup-type { display: inline-block; width: fit-content; border-radius: 999px; padding: 4px 8px; background: #e2e8f0; color: #334155; font-size: 11px; font-weight: 800; }
+
+    .payment-lock-toggle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 14px;
+      padding: 12px 14px;
+      min-height: 56px;
+      cursor: pointer;
+    }
+
+    .payment-lock-toggle input {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+      accent-color: #ea580c;
+      flex-shrink: 0;
+    }
+
+    .payment-lock-toggle strong {
+      display: block;
+      font-size: 14px;
+      color: #9a3412;
+      margin-bottom: 2px;
+    }
+
+    .payment-lock-toggle span {
+      display: block;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #7c2d12;
+      font-weight: 600;
+    }
+
+    @media (max-width: 800px) {
+      .content-grid { grid-template-columns: 1fr; }
+      .item-row { grid-template-columns: 1fr; }
+      .item-head { display: none; }
+      .doc-header, .doc-meta, .bottom-grid { flex-direction: column; grid-template-columns: 1fr; }
+      .company-box { text-align: left; }
+      .meta-table { min-width: 0; width: 100%; }
+      .amount-box { grid-template-columns: 1fr; }
+      .amount-label { padding: 10px; }
+      .amount-value { font-size: 25px; }
+      .summary { width: 100%; }
+      .page { padding: 18px; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      .app { max-width: none; padding: 0; }
+      .page { box-shadow: none; border-radius: 0; min-height: 287mm; page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card no-print">
+      <div class="flex between">
+        <h1>スマホ請求書・領収書アプリ</h1>
+        <div class="flex">
+          <button type="button" onclick="saveBackup()">バックアップ</button>
+          <button type="button" onclick="openBackupPopup()">確認/復元</button>
+          <button type="button" onclick="printPdf()">PDF保存</button>
+          <button type="button" onclick="sendToLine()">LINE送信</button>
         </div>
-
-        <div class="tabs">
-          <button class="tab-button active" id="inputTab" type="button">入力</button>
-          <button class="tab-button" id="summaryTab" type="button">集計</button>
-        </div>
-
-        <section class="field">
-          <label for="closingDay">締め日</label>
-          <input id="closingDay" type="number" min="1" max="31" inputmode="numeric" />
-        </section>
-
-        <section id="inputPage">
-          <div id="savedBanner"></div>
-          <div class="calendar-head" id="calendarHead"></div>
-          <div class="calendar" id="calendar"></div>
-
-          <div class="panel">
-            <p class="panel-title" id="selectedDateTitle"></p>
-
-            <div class="field">
-              <label for="siteInput">現場名</label>
-              <input id="siteInput" type="text" placeholder="現場名" />
-            </div>
-
-            <div class="field">
-              <div class="label">記憶した現場名</div>
-              <div class="history-list" id="siteHistory"></div>
-            </div>
-
-            <div class="field">
-              <div class="label">勤務</div>
-              <div class="mark-grid">
-                <button class="choice-button" id="markWork" type="button">○</button>
-                <button class="choice-button" id="markHalf" type="button">△</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="priceInput">日当</label>
-              <input id="priceInput" type="number" inputmode="numeric" step="100" placeholder="日当" />
-            </div>
-
-            <div class="field">
-              <div class="label">インボイス</div>
-              <div class="invoice-grid">
-                <button class="choice-button" id="invoiceOn" type="button">有り</button>
-                <button class="choice-button" id="invoiceOff" type="button">無し</button>
-              </div>
-            </div>
-
-            <div class="save-preview" id="savePreview"></div>
-            <button class="save-button" id="saveButton" type="button">保存</button>
-            <div class="saved-message" id="savedMessage"></div>
-          </div>
-        </section>
-
-        <section class="hidden" id="summaryPage">
-          <div class="summary-box">
-            <div class="summary-top row">
-              <h2>現場別集計</h2>
-              <button class="small-button" id="toggleAll" type="button">全選択</button>
-            </div>
-            <div id="summaryList"></div>
-            <div class="summary-total">
-              <span>選択合計</span>
-              <span id="selectedTotal">0円</span>
-            </div>
-          </div>
-          <button class="line-button" id="lineButton" type="button">チェックした現場をLINEで共有</button>
-        </section>
       </div>
-    </main>
+      <div class="flex" style="margin-top:14px;align-items:flex-end;gap:14px;flex-wrap:wrap">
+        <label style="min-width:240px;max-width:320px">
+          送信・PDF作成する書類
+          <select id="documentMode">
+            <option value="invoice">請求書のみ</option>
+            <option value="receipt">領収書のみ</option>
+          </select>
+        </label>
 
-    <script>
-      const weekDays = ["日", "月", "火", "水", "木", "金", "土"];
-      const siteStorageKey = "work-calendar-sites";
-      const closingStorageKey = "work-calendar-closing-days";
-
-      const today = new Date();
-      let year = today.getFullYear();
-      let month = today.getMonth() + 1;
-      let selectedDay = today.getDate();
-      let currentView = "input";
-      let workData = {};
-      let savedSites = [];
-      let closingDays = {};
-      let draft = null;
-      let editingSite = "";
-      let editingSiteName = "";
-      let justSavedDay = null;
-      let checkedGroups = {};
-
-      const defaultWork = {
-        site: "",
-        mark: "○",
-        price: 22000,
-        invoice: true,
-      };
-
-      function readStorage(key, fallback) {
-        try {
-          const saved = localStorage.getItem(key);
-          return saved ? JSON.parse(saved) : fallback;
-        } catch {
-          return fallback;
-        }
-      }
-
-      function writeStorage(key, value) {
-        localStorage.setItem(key, JSON.stringify(value));
-      }
-
-      function getMonthKey() {
-        return `${year}-${String(month).padStart(2, "0")}`;
-      }
-
-      function getWorkStorageKey() {
-        return `work-calendar-${getMonthKey()}`;
-      }
-
-      function getClosingDay() {
-        return closingDays[getMonthKey()] ?? 25;
-      }
-
-      function setClosingDay(value) {
-        const safe = Math.min(31, Math.max(1, Number(value) || 1));
-        closingDays = { ...closingDays, [getMonthKey()]: safe };
-        writeStorage(closingStorageKey, closingDays);
-      }
-
-      function loadMonthData() {
-        workData = readStorage(getWorkStorageKey(), {});
-      }
-
-      function saveMonthData() {
-        writeStorage(getWorkStorageKey(), workData);
-      }
-
-      function loadGlobalData() {
-        savedSites = readStorage(siteStorageKey, []);
-        closingDays = readStorage(closingStorageKey, {});
-      }
-
-      function saveSites() {
-        writeStorage(siteStorageKey, savedSites);
-      }
-
-      function getSelectedData() {
-        return workData[selectedDay] || { ...defaultWork };
-      }
-
-      function resetDraft() {
-        draft = { ...getSelectedData() };
-        justSavedDay = null;
-      }
-
-      function getDaysInMonth() {
-        return new Date(year, month, 0).getDate();
-      }
-
-      function getCalendarDays() {
-        const firstDay = new Date(year, month - 1, 1).getDay();
-        const blanks = Array.from({ length: firstDay }, (_, index) => ({ blank: true, key: `blank-${index}` }));
-        const days = Array.from({ length: getDaysInMonth() }, (_, index) => {
-          const day = index + 1;
-          const date = new Date(year, month - 1, day);
-          return {
-            blank: false,
-            key: `day-${day}`,
-            day,
-            week: weekDays[date.getDay()],
-          };
-        });
-        return [...blanks, ...days];
-      }
-
-      function setDraft(key, value, shouldRender = true) {
-        draft = { ...(draft || getSelectedData()), [key]: value };
-        justSavedDay = null;
-        if (shouldRender) renderInputPage();
-      }
-
-      function rememberSite(site) {
-        const trimmed = site.trim();
-        if (!trimmed) return;
-        if (!savedSites.includes(trimmed)) {
-          savedSites = [...savedSites, trimmed];
-          saveSites();
-        }
-      }
-
-      function updateCalendarCell(day, data) {
-        const cell = document.querySelector(`.day-button[data-day="${day}"]`);
-        if (!cell) return;
-
-        const mark = cell.querySelector(".day-mark");
-        const site = cell.querySelector(".day-site");
-        if (mark) mark.textContent = data.mark || "-";
-        if (site) site.textContent = data.site || "";
-
-        cell.classList.add("saved");
-        cell.classList.add("selected");
-        requestAnimationFrame(() => {
-          cell.scrollIntoView({ behavior: "smooth", block: "center" });
-        });
-      }
-
-      function saveSelectedDay() {
-        const saveButtonBefore = document.querySelector("#saveButton");
-        if (saveButtonBefore) {
-          saveButtonBefore.textContent = "保存中...";
-          saveButtonBefore.classList.remove("saved");
-          saveButtonBefore.classList.add("saving");
-        }
-
-        const siteInput = document.querySelector("#siteInput");
-        const priceInput = document.querySelector("#priceInput");
-        const currentDraft = draft || getSelectedData();
-        const draftData = {
-          ...currentDraft,
-          site: (siteInput ? siteInput.value : currentDraft.site).trim(),
-          price: priceInput ? Number(priceInput.value || 0) : Number(currentDraft.price || 0),
-        };
-
-        draft = { ...draftData };
-        workData[selectedDay] = { ...draftData };
-        justSavedDay = selectedDay;
-        rememberSite(draftData.site);
-        saveMonthData();
-        renderCalendar();
-        updateCalendarCell(selectedDay, draftData);
-        renderSavedBanner();
-        renderInputForm();
-        renderSiteHistory();
-
-        const saveButton = document.querySelector("#saveButton");
-        saveButton.textContent = "決定済み";
-        saveButton.classList.remove("saving");
-        saveButton.classList.add("saved");
-
-        const savedCell = document.querySelector(`.day-button[data-day="${selectedDay}"]`);
-        if (savedCell) {
-          savedCell.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }
-
-      function getGroups() {
-        const map = {};
-        Object.values(workData).forEach((data) => {
-          if (!data.site || data.mark === "×") return;
-          const key = `${data.site}-${data.invoice ? "invoice" : "no-invoice"}`;
-          if (!map[key]) {
-            map[key] = {
-              key,
-              site: data.site,
-              invoice: data.invoice,
-              fullDays: 0,
-              halfDays: 0,
-              total: 0,
-            };
-          }
-
-          const price = Number(data.price || 0);
-          map[key].total += data.mark === "△" ? price / 2 : price;
-          if (data.mark === "○") map[key].fullDays += 1;
-          if (data.mark === "△") map[key].halfDays += 1;
-        });
-
-        return Object.values(map).map((group) => {
-          const tax = group.invoice ? Math.floor(group.total * 0.1) : 0;
-          return {
-            ...group,
-            tax,
-            grand: group.total + tax,
-            workDays: group.fullDays + group.halfDays * 0.5,
-          };
-        });
-      }
-
-      function syncCheckedGroups() {
-        const next = {};
-        getGroups().forEach((group) => {
-          next[group.key] = checkedGroups[group.key] ?? true;
-        });
-        checkedGroups = next;
-      }
-
-      function getSelectedGroups() {
-        return getGroups().filter((group) => checkedGroups[group.key]);
-      }
-
-      function shareToLine() {
-        const selected = getSelectedGroups();
-        if (selected.length === 0) return;
-
-        const text = selected
-          .map((group) =>
-            [
-              `現場名: ${group.site}`,
-              `○日数: ${group.fullDays}日`,
-              `△日数: ${group.halfDays}日`,
-              `換算日数: ${group.workDays}日`,
-              `税抜: ${group.total.toLocaleString()}円`,
-              `消費税: ${group.tax.toLocaleString()}円`,
-              `請求額: ${group.grand.toLocaleString()}円`,
-            ].join("\n"),
-          )
-          .join("\n\n");
-
-        window.open(`https://social-plugins.line.me/lineit/share?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-      }
-
-      function renderBase() {
-        document.querySelector("#monthTitle").textContent = `${year}年 ${month}月`;
-        document.querySelector("#closingDay").value = getClosingDay();
-        document.querySelector("#inputTab").classList.toggle("active", currentView === "input");
-        document.querySelector("#summaryTab").classList.toggle("active", currentView === "summary");
-        document.querySelector("#inputPage").classList.toggle("hidden", currentView !== "input");
-        document.querySelector("#summaryPage").classList.toggle("hidden", currentView !== "summary");
-      }
-
-      function renderCalendarHead() {
-        document.querySelector("#calendarHead").innerHTML = weekDays
-          .map((week) => `<div class="${week === "日" ? "week-sun" : week === "土" ? "week-sat" : ""}">${week}</div>`)
-          .join("");
-      }
-
-      function renderCalendar() {
-        document.querySelector("#calendar").innerHTML = getCalendarDays()
-          .map((item) => {
-            if (item.blank) return `<div class="blank-day"></div>`;
-
-            const data = item.day === justSavedDay ? draft || workData[item.day] || {} : workData[item.day] || {};
-            const isSelected = selectedDay === item.day;
-            const isSaved = justSavedDay === item.day;
-
-            return `
-              <button type="button" data-day="${item.day}" class="day-button ${isSelected ? "selected" : ""} ${isSaved ? "saved" : ""}">
-                <div class="day-number">${item.day}</div>
-                <div class="day-week ${item.week === "日" ? "week-sun" : item.week === "土" ? "week-sat" : ""}">${item.week}</div>
-                <div class="day-mark">${data.mark || "-"}</div>
-                <div class="day-site">${data.site || ""}</div>
-              </button>
-            `;
-          })
-          .join("");
-
-        document.querySelectorAll(".day-button").forEach((button) => {
-          button.addEventListener("click", () => {
-            selectedDay = Number(button.dataset.day);
-            resetDraft();
-            renderInputPage();
-          });
-        });
-      }
-
-      function renderSavedBanner() {
-        const banner = document.querySelector("#savedBanner");
-        if (!justSavedDay) {
-          banner.innerHTML = "";
-          return;
-        }
-        const data = draft || getSelectedData();
-        banner.innerHTML = `
-          <div class="saved-banner">
-            <strong>保存しました</strong>
-            ${month}月${justSavedDay}日 / ${data.site || "現場名未入力"} / ${data.mark} / インボイス${data.invoice ? "有り" : "無し"}
+        <label class="payment-lock-toggle">
+          <input type="checkbox" id="paymentConfirmed">
+          <div>
+            <strong>入金確認済み</strong>
+            <span>領収書の送信・PDF化を許可</span>
           </div>
-        `;
-      }
+        </label>
+      </div>
+      <p class="small-note">入力内容は自動保存されます。PDF保存・LINE送信は、選択中の書類1枚だけが対象です。</p>
+    </div>
 
-      function renderSiteHistory() {
-        const root = document.querySelector("#siteHistory");
-        if (savedSites.length === 0) {
-          root.innerHTML = `<div class="history-empty">保存すると現場名がここに表示されます。</div>`;
-          return;
-        }
+    <div class="card no-print">
+      <h3>会社情報</h3>
+      <div class="grid">
+        <label>店名・会社名<input id="company" placeholder="例：TAKEMOTO 塗装"></label>
+        <label>住所<input id="address" placeholder="例：京都府木津川市〇〇町〇〇"></label>
+        <label>電話番号<input id="tel" placeholder="例：090-0000-0000"></label>
+        <label>インボイス登録番号<input id="invoice" placeholder="例：T0000000000000"></label>
+        <label>
+          インボイス対応
+          <select id="taxMode">
+            <option value="tax">消費税あり（インボイス対応）</option>
+            <option value="none">消費税なし（免税事業者）</option>
+          </select>
+        </label>
+      </div>
+    </div>
 
-        root.innerHTML = savedSites
-          .map((site) => {
-            if (editingSite === site) {
-              return `
-                <div class="history-item">
-                  <input class="edit-site-input" value="${editingSiteName}" />
-                  <div class="row" style="margin-top:8px;">
-                    <button type="button" class="small-button save-site-edit">保存</button>
-                    <button type="button" class="small-button cancel-site-edit">戻る</button>
-                  </div>
-                </div>
-              `;
-            }
+    <div class="card no-print">
+      <h3>振込先</h3>
+      <div class="grid">
+        <label>銀行名<input id="bank" placeholder="〇〇銀行"></label>
+        <label>支店名<input id="branch" placeholder="〇〇支店"></label>
+        <label>口座種別<input id="type" placeholder="普通 / 当座"></label>
+        <label>口座番号<input id="number" placeholder="1234567"></label>
+        <label>口座名義<input id="holder" placeholder="タケモトトソウ"></label>
+      </div>
+    </div>
 
-            return `
-              <div class="history-item">
-                <div class="row">
-                  <button type="button" class="site-select" data-site="${site}">${site}</button>
-                  <button type="button" class="small-button site-edit" data-site="${site}">編集</button>
-                  <button type="button" class="small-button danger site-delete" data-site="${site}">削除</button>
-                </div>
-              </div>
-            `;
-          })
-          .join("");
+    <div class="card no-print">
+      <div class="flex between">
+        <h3>請求・領収内容</h3>
+        <button type="button" class="secondary" onclick="addRow()">＋ 明細追加</button>
+      </div>
+      <div class="grid content-grid">
+        <label class="full-width">宛名
+          <div class="flex">
+            <input id="customer" placeholder="宛名">
+            <button type="button" onclick="openCustomerPopup()">選択</button>
+            <button type="button" onclick="saveCustomer()">記憶</button>
+          </div>
+        </label>
+        <label>工事名<input id="project" placeholder="外壁塗装工事"></label>
+        <label>工事場所<input id="place" placeholder="工事場所"></label>
+        <label>発行日<input id="date" type="date"></label>
+        <label>請求書No.<input id="invoiceNo" placeholder="INV-0001"></label>
+        <label>領収書No.<input id="receiptNo" placeholder="REC-0001"></label>
+        <label>支払期限<input id="dueDate" type="date"></label>
+        <label>支払方法<input id="payment" placeholder="銀行振込"></label>
+      </div>
 
-        document.querySelectorAll(".site-select").forEach((button) => {
-          button.addEventListener("click", () => setDraft("site", button.dataset.site));
+      <h3 style="margin-top:18px">明細</h3>
+      <div id="items" class="item-editor">
+        <div class="item-row item-head">
+          <div>品目</div><div>数量</div><div>単位</div><div>単価</div><div>金額</div><div></div>
+        </div>
+      </div>
+      <p class="small-note">単価は表示・計算時に下2桁を切り捨てます。入力途中の数字は勝手に0へ戻りません。</p>
+    </div>
+
+    <div class="pages">
+      <section class="page doc-top" id="invoicePage">
+        <div class="doc-header">
+          <div>
+            <div class="doc-title">請求書</div>
+            <div style="font-size:12px;color:#64748b;letter-spacing:.15em">INVOICE</div>
+          </div>
+          <div class="company-box">
+            <div class="company-name preview-company">会社名未設定</div>
+            <div class="preview-address">住所未設定</div>
+            <div>TEL：<span class="preview-tel">電話番号未設定</span></div>
+            <div>登録番号：<span class="preview-invoice">登録番号未設定</span></div>
+          </div>
+        </div>
+        <div class="doc-meta">
+          <div>
+            <div class="customer-name"><span class="preview-customer">宛名未設定</span> 様 / 御中</div>
+            <p>下記の通りご請求申し上げます。</p>
+          </div>
+          <div class="meta-table">
+            <div><span>発行日</span><span class="preview-date">未設定</span></div>
+            <div><span>請求書No.</span><span class="preview-invoice-no">未設定</span></div>
+            <div><span>支払期限</span><span class="preview-due-date">未設定</span></div>
+          </div>
+        </div>
+        <div class="amount-box"><div class="amount-label">ご請求金額</div><div class="amount-value preview-total">¥0-</div></div>
+        <div class="project-box">
+          <div><strong>工事名：</strong><span class="preview-project">未設定</span></div>
+          <div><strong>工事場所：</strong><span class="preview-place">未設定</span></div>
+        </div>
+        <table>
+          <thead><tr><th>品目</th><th class="center">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead>
+          <tbody id="previewItems"></tbody>
+        </table>
+        <div class="summary">
+          <div><span>小計</span><strong class="preview-subtotal">¥0</strong></div>
+          <div><span class="tax-label">消費税 10%</span><strong class="preview-tax">¥0</strong></div>
+          <div><span>合計</span><strong class="preview-total-inline">¥0</strong></div>
+        </div>
+        <div class="bottom-grid">
+          <div class="info-box">
+            <div class="box-title">お振込先</div>
+            <span class="preview-bank">銀行名未設定</span> <span class="preview-branch">支店名未設定</span><br>
+            <span class="preview-type">種別未設定</span> <span class="preview-number">口座番号未設定</span><br>
+            口座名義：<span class="preview-holder">名義未設定</span>
+          </div>
+          <div class="info-box">
+            <div class="box-title">備考</div>
+            本書は電子発行書類です。PDF送信を基本とします。
+          </div>
+        </div>
+      </section>
+
+      <section class="page doc-top" id="receiptPage">
+        <div class="doc-header">
+          <div>
+            <div class="doc-title">領収書</div>
+            <div style="font-size:12px;color:#64748b;letter-spacing:.15em">RECEIPT</div>
+          </div>
+          <div class="company-box">
+            <div class="company-name preview-company">会社名未設定</div>
+            <div class="preview-address">住所未設定</div>
+            <div>TEL：<span class="preview-tel">電話番号未設定</span></div>
+            <div>登録番号：<span class="preview-invoice">登録番号未設定</span></div>
+          </div>
+        </div>
+        <div class="doc-meta">
+          <div><div class="customer-name"><span class="preview-customer">宛名未設定</span> 様 / 御中</div></div>
+          <div class="meta-table">
+            <div><span>発行日</span><span class="preview-date">未設定</span></div>
+            <div><span>領収書No.</span><span class="preview-receipt-no">未設定</span></div>
+            <div><span>支払方法</span><span class="preview-payment">未設定</span></div>
+          </div>
+        </div>
+        <div class="amount-box"><div class="amount-label">領収金額</div><div class="amount-value preview-total">¥0-</div></div>
+        <p style="line-height:1.9">但し、<strong><span class="preview-project">未設定</span>代</strong>として、上記金額を正に領収いたしました。</p>
+        <div class="bottom-grid">
+          <div class="info-box">
+            <div class="box-title">内訳</div>
+            税抜金額：<span class="preview-subtotal">¥0</span><br>
+            消費税額：<span class="preview-tax">¥0</span><br>
+            <span class="tax-rate-label">税率：10%</span>
+          </div>
+          <div class="info-box">
+            <div class="box-title">備考</div>
+            本書は電子発行の領収書です。紙で印刷して交付する場合、金額により収入印紙が必要となる場合があります。
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="popup no-print" id="customerPopup" onclick="closePopupByBackdrop(event, 'customerPopup')">
+    <div class="popup-box">
+      <div class="flex between"><h3>宛名一覧</h3><button type="button" onclick="hidePopup('customerPopup')">×</button></div>
+      <div id="customerList" class="popup-list"></div>
+    </div>
+  </div>
+
+  <div class="popup no-print" id="backupPopup" onclick="closePopupByBackdrop(event, 'backupPopup')">
+    <div class="popup-box">
+      <div class="flex between"><h3>バックアップ一覧</h3><button type="button" onclick="hidePopup('backupPopup')">×</button></div>
+      <div class="flex" style="margin-bottom:10px">
+        <button type="button" onclick="saveBackup()">現在内容を保存</button>
+        <button type="button" class="danger" onclick="deleteAllBackups()">全削除</button>
+      </div>
+      <div id="backupList" class="popup-list"></div>
+    </div>
+  </div>
+
+<script>
+  const STORAGE_AUTO = 'invoiceAuto';
+  const STORAGE_BACKUPS = 'invoiceBackups';
+  const STORAGE_CUSTOMERS = 'customers';
+  const DEFAULT_TAX_RATE = 0.10;
+
+  const yen = value => new Intl.NumberFormat('ja-JP', {
+    style: 'currency', currency: 'JPY', maximumFractionDigits: 0
+  }).format(Number(value || 0));
+
+  const byId = id => document.getElementById(id);
+  const setText = (selector, value) => document.querySelectorAll(selector).forEach(el => { el.textContent = value; });
+  const safeJsonParse = (text, fallback) => {
+    try { return JSON.parse(text) ?? fallback; } catch { return fallback; }
+  };
+
+  function formatDateJapanese(value) {
+    if (!value) return '未設定';
+    const [year, month, day] = value.split('-');
+    return `${Number(year)}年${Number(month)}月${Number(day)}日`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[char]));
+  }
+
+  function createUnitOptions(selectedUnit = '式') {
+    const units = ['式', '㎡', '人工', 'ヶ所', 'm', '枚', '台'];
+    return units.map(unit => `<option value="${unit}" ${unit === selectedUnit ? 'selected' : ''}>${unit}</option>`).join('');
+  }
+
+  function addRow(data = {}, options = {}) {
+    const row = document.createElement('div');
+    row.className = 'item-row';
+    row.innerHTML = `
+      <input class="item-name" placeholder="品目" value="${escapeHtml(data.name || '')}">
+      <input class="item-qty" type="number" inputmode="decimal" placeholder="数量" value="${escapeHtml(data.qty || '')}">
+      <select class="item-unit">${createUnitOptions(data.unit || '式')}</select>
+      <input class="item-price" type="number" inputmode="numeric" placeholder="単価" value="${escapeHtml(data.price || '')}">
+      <div class="line-total">¥0</div>
+      <button type="button" class="danger remove-row" onclick="removeRow(this)">削除</button>
+    `;
+    row.querySelectorAll('input, select').forEach(el => {
+      el.addEventListener('input', () => { updatePreview(); autoSave(); });
+      el.addEventListener('change', () => { updatePreview(); autoSave(); });
+    });
+    byId('items').appendChild(row);
+    updatePreview();
+    if (options.save !== false) autoSave();
+  }
+
+  function removeRow(button) {
+    button.closest('.item-row').remove();
+    if (document.querySelectorAll('.item-row:not(.item-head)').length === 0) addRow();
+    updatePreview();
+    autoSave();
+  }
+
+  function collectItems() {
+    return [...document.querySelectorAll('.item-row:not(.item-head)')].map(row => ({
+      name: row.querySelector('.item-name').value,
+      qty: row.querySelector('.item-qty').value,
+      unit: row.querySelector('.item-unit').value,
+      price: row.querySelector('.item-price').value,
+    }));
+  }
+
+  function collect() {
+    return {
+      company: byId('company').value,
+      address: byId('address').value,
+      tel: byId('tel').value,
+      invoice: byId('invoice').value,
+      bank: byId('bank').value,
+      branch: byId('branch').value,
+      type: byId('type').value,
+      number: byId('number').value,
+      holder: byId('holder').value,
+      customer: byId('customer').value,
+      project: byId('project').value,
+      place: byId('place').value,
+      date: byId('date').value,
+      invoiceNo: byId('invoiceNo').value,
+      receiptNo: byId('receiptNo').value,
+      dueDate: byId('dueDate').value,
+      payment: byId('payment').value,
+      taxMode: byId('taxMode').value,
+      documentMode: byId('documentMode').value,
+      paymentConfirmed: byId('paymentConfirmed').checked,
+      items: collectItems(),
+    };
+  }
+
+  function apply(data = {}) {
+    ['company','address','tel','invoice','bank','branch','type','number','holder','customer','project','place','date','invoiceNo','receiptNo','dueDate','payment','taxMode','documentMode']
+      .forEach(id => { if (byId(id)) byId(id).value = data[id] || ''; });
+
+    document.querySelectorAll('.item-row:not(.item-head)').forEach(row => row.remove());
+    const items = Array.isArray(data.items) && data.items.length ? data.items : createBlankItems(5);
+    items.forEach(item => addRow(item, { save: false }));
+    byId('paymentConfirmed').checked = !!data.paymentConfirmed;
+    updatePreview();
+  }
+
+  function updatePreview() {
+    const data = collect();
+    setText('.preview-company', data.company || '会社名未設定');
+    setText('.preview-address', data.address || '住所未設定');
+    setText('.preview-tel', data.tel || '電話番号未設定');
+    setText('.preview-invoice', data.invoice || '登録番号未設定');
+    setText('.preview-bank', data.bank || '銀行名未設定');
+    setText('.preview-branch', data.branch || '支店名未設定');
+    setText('.preview-type', data.type || '種別未設定');
+    setText('.preview-number', data.number || '口座番号未設定');
+    setText('.preview-holder', data.holder || '名義未設定');
+    setText('.preview-customer', data.customer || '宛名未設定');
+    setText('.preview-project', data.project || '未設定');
+    setText('.preview-place', data.place || '未設定');
+    setText('.preview-date', formatDateJapanese(data.date));
+    setText('.preview-due-date', formatDateJapanese(data.dueDate));
+    setText('.preview-invoice-no', data.invoiceNo || '未設定');
+    setText('.preview-receipt-no', data.receiptNo || '未設定');
+    setText('.preview-payment', data.payment || '未設定');
+    updateDocumentVisibility(data.documentMode || 'invoice');
+
+    let subtotal = 0;
+    const body = byId('previewItems');
+    body.innerHTML = '';
+
+    document.querySelectorAll('.item-row:not(.item-head)').forEach(row => {
+      const name = row.querySelector('.item-name').value.trim();
+      const qtyValue = Number(row.querySelector('.item-qty').value || 0);
+      const unit = row.querySelector('.item-unit').value || '式';
+      const rawPrice = Number(row.querySelector('.item-price').value || 0);
+      const roundedPrice = rawPrice <= 0 ? 0 : Math.floor(rawPrice / 100) * 100;
+      const lineTotal = qtyValue * roundedPrice;
+
+      row.querySelector('.line-total').textContent = yen(lineTotal);
+      if (!name) return;
+
+      subtotal += lineTotal;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(name)}</td>
+        <td class="center">${escapeHtml(qtyValue || '')}${escapeHtml(unit)}</td>
+        <td class="num">${yen(roundedPrice)}</td>
+        <td class="num">${yen(lineTotal)}</td>
+      `;
+      body.appendChild(tr);
+    });
+
+    const taxMode = byId('taxMode').value;
+    const taxRate = taxMode === 'none' ? 0 : DEFAULT_TAX_RATE;
+    const tax = Math.floor(subtotal * taxRate);
+    const total = subtotal + tax;
+    setText('.preview-subtotal', yen(subtotal));
+    setText('.preview-tax', yen(tax));
+    document.querySelectorAll('.preview-invoice').forEach(el => {
+      el.textContent = taxMode === 'none'
+        ? '免税事業者'
+        : (data.invoice || '登録番号未設定');
+    });
+    setText('.preview-total', `${yen(total)}-`);
+    setText('.preview-total-inline', yen(total));
+
+    document.querySelectorAll('.tax-label').forEach(el => {
+      el.textContent = taxMode === 'none' ? '消費税' : '消費税 10%';
+    });
+
+    document.querySelectorAll('.tax-rate-label').forEach(el => {
+      el.textContent = taxMode === 'none' ? '税率：対象外' : '税率：10%';
+    });
+  }
+
+  function autoSave() {
+    localStorage.setItem(STORAGE_AUTO, JSON.stringify(collect()));
+  }
+
+  function loadAuto() {
+    const data = safeJsonParse(localStorage.getItem(STORAGE_AUTO), null);
+    if (data) apply(data);
+  }
+
+  // 古いHTML内に残っていた呼び出し名への互換対応。
+  function handleAutoSave() {
+    autoSave();
+  }
+
+  function calculateTotalsFromItems(items = []) {
+    const subtotal = items.reduce((sum, item) => {
+      if (!String(item.name || '').trim()) return sum;
+      const qty = Number(item.qty || 0);
+      const rawPrice = Number(item.price || 0);
+      const roundedPrice = rawPrice <= 0 ? 0 : Math.floor(rawPrice / 100) * 100;
+      return sum + qty * roundedPrice;
+    }, 0);
+    const taxMode = byId('taxMode')?.value || 'tax';
+    const tax = taxMode === 'none' ? 0 : Math.floor(subtotal * DEFAULT_TAX_RATE);
+    return { subtotal, tax, total: subtotal + tax };
+  }
+
+  function saveBackup(title, options = {}) {
+    const backups = safeJsonParse(localStorage.getItem(STORAGE_BACKUPS), []);
+    const now = new Date();
+    const data = collect();
+    const totals = calculateTotalsFromItems(data.items);
+    const backup = {
+      id: Date.now(),
+      title: title || `${data.customer || '宛名未設定'} ${now.toLocaleString('ja-JP')}`,
+      customer: data.customer || '宛名未設定',
+      amount: totals.total,
+      issueDate: data.date || now.toISOString().slice(0, 10),
+      backupType: options.type || '手動保存',
+      createdAt: now.toLocaleString('ja-JP'),
+      data,
+    };
+    backups.unshift(backup);
+    localStorage.setItem(STORAGE_BACKUPS, JSON.stringify(backups.slice(0, 50)));
+    renderBackups();
+    if (options.silent !== true) alert('バックアップ保存しました');
+  }
+
+  function openBackupPopup() {
+    renderBackups();
+    showPopup('backupPopup');
+  }
+
+  function renderBackups() {
+    const list = byId('backupList');
+    const backups = safeJsonParse(localStorage.getItem(STORAGE_BACKUPS), []);
+    list.innerHTML = '';
+    if (!backups.length) {
+      list.innerHTML = '<div class="small-note">バックアップはまだありません。</div>';
+      return;
+    }
+    backups.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'backup-item';
+      const data = item.data || {};
+      const customer = item.customer || data.customer || '宛名未設定';
+      const totals = typeof item.amount === 'number'
+        ? { total: item.amount }
+        : calculateTotalsFromItems(data.items || []);
+      const issueDate = item.issueDate || data.date || '日付未設定';
+      const type = item.backupType || item.title || '保存';
+
+      div.innerHTML = `
+        <div class="backup-main">
+          <span class="backup-type">${escapeHtml(type)}</span>
+          <div class="backup-customer">${escapeHtml(customer)}</div>
+          <div class="backup-amount">${yen(totals.total)}</div>
+          <div class="backup-date">${escapeHtml(issueDate)}</div>
+          <div class="small-note">保存日時：${escapeHtml(item.createdAt || '')}</div>
+        </div>
+        <div class="flex">
+          <button type="button">復元</button>
+          <button type="button" class="danger">削除</button>
+        </div>
+      `;
+      div.querySelector('button').onclick = () => { apply(item.data); hidePopup('backupPopup'); autoSave(); };
+      div.querySelector('.danger').onclick = () => deleteBackup(item.id);
+      list.appendChild(div);
+    });
+  }
+
+  function deleteBackup(id) {
+    const backups = safeJsonParse(localStorage.getItem(STORAGE_BACKUPS), []);
+    localStorage.setItem(STORAGE_BACKUPS, JSON.stringify(backups.filter(item => item.id !== id)));
+    renderBackups();
+  }
+
+  function deleteAllBackups() {
+    if (!confirm('すべてのバックアップを削除しますか？')) return;
+    localStorage.removeItem(STORAGE_BACKUPS);
+    renderBackups();
+  }
+
+  function saveCustomer() {
+    const name = byId('customer').value.trim();
+    if (!name) return alert('宛名を入力してください');
+    const customers = safeJsonParse(localStorage.getItem(STORAGE_CUSTOMERS), []);
+    const next = [name, ...customers.filter(item => item !== name)].slice(0, 30);
+    localStorage.setItem(STORAGE_CUSTOMERS, JSON.stringify(next));
+    alert('宛名を記憶しました');
+  }
+
+  function openCustomerPopup() {
+    const customers = safeJsonParse(localStorage.getItem(STORAGE_CUSTOMERS), []);
+    const list = byId('customerList');
+    list.innerHTML = '';
+    if (!customers.length) {
+      list.innerHTML = '<div class="small-note">記憶した宛名はまだありません。</div>';
+    }
+    customers.forEach(name => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'choice';
+      button.textContent = name;
+      button.onclick = () => {
+        byId('customer').value = name;
+        updatePreview();
+        autoSave();
+        hidePopup('customerPopup');
+      };
+      list.appendChild(button);
+    });
+    showPopup('customerPopup');
+  }
+
+  function showPopup(id) { byId(id).classList.add('open'); }
+  function hidePopup(id) { byId(id).classList.remove('open'); }
+  function closePopupByBackdrop(event, id) { if (event.target.id === id) hidePopup(id); }
+
+  function getDocumentModeLabel(mode = byId('documentMode').value) {
+    return mode === 'receipt' ? '領収書' : '請求書';
+  }
+
+  function getTargetDocumentElement() {
+    return byId(byId('documentMode').value === 'receipt' ? 'receiptPage' : 'invoicePage');
+  }
+
+  function enforceReceiptLock() {
+    const mode = byId('documentMode').value;
+    const confirmed = byId('paymentConfirmed').checked;
+
+    if (mode === 'receipt' && !confirmed) {
+      alert('領収書は「入金確認済み」をONにしないと送信・PDF化できません。');
+      byId('documentMode').value = 'invoice';
+      return false;
+    }
+
+    return true;
+  }
+
+  function updateDocumentVisibility(mode = byId('documentMode').value) {
+    byId('invoicePage').classList.toggle('hidden-doc', mode !== 'invoice');
+    byId('receiptPage').classList.toggle('hidden-doc', mode !== 'receipt');
+  }
+
+  async function generatePdfBlob() {
+    if (!enforceReceiptLock()) {
+      throw new Error('receipt_locked');
+    }
+    const element = getTargetDocumentElement();
+    const modeLabel = getDocumentModeLabel();
+    const customer = byId('customer').value || '宛名未設定';
+    const date = byId('date').value || new Date().toISOString().slice(0,10);
+    const fileName = `${date}_${customer}_${modeLabel}.pdf`;
+
+    const opt = {
+      margin: 8,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    const worker = html2pdf().set(opt).from(element);
+    const pdfBlob = await worker.outputPdf('blob');
+
+    return { blob: pdfBlob, fileName };
+  }
+
+  async function printPdf() {
+    try {
+      const { blob, fileName } = await generatePdfBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (error) {
+      console.error(error);
+      alert('PDF生成に失敗しました');
+    }
+  }
+
+  async function sendToLine() {
+    if (!enforceReceiptLock()) return;
+    try {
+      saveBackup(`LINE送信 ${getDocumentModeLabel()} ${new Date().toLocaleString('ja-JP')}`, { type: `LINE送信/${getDocumentModeLabel()}`, silent: true });
+
+      const customer = byId('customer').value || '宛名未設定';
+      const total = document.querySelector('.preview-total-inline').textContent;
+      const { blob, fileName } = await generatePdfBlob();
+
+      const file = new File([blob], fileName, {
+        type: 'application/pdf'
+      });
+
+      const modeLabel = getDocumentModeLabel();
+      const message = `${modeLabel}を送付いたします。
+宛名：${customer}
+金額：${total}`;
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: fileName,
+          text: message,
+          files: [file]
         });
-        document.querySelectorAll(".site-edit").forEach((button) => {
-          button.addEventListener("click", () => {
-            editingSite = button.dataset.site;
-            editingSiteName = button.dataset.site;
-            renderInputPage();
-          });
-        });
-        document.querySelectorAll(".site-delete").forEach((button) => {
-          button.addEventListener("click", () => {
-            const site = button.dataset.site;
-            savedSites = savedSites.filter((item) => item !== site);
-            if (draft.site === site) draft.site = "";
-            if (editingSite === site) {
-              editingSite = "";
-              editingSiteName = "";
-            }
-            saveSites();
-            renderInputPage();
-          });
-        });
-
-        const editInput = document.querySelector(".edit-site-input");
-        if (editInput) {
-          editInput.addEventListener("input", (event) => {
-            editingSiteName = event.target.value;
-          });
-          document.querySelector(".save-site-edit").addEventListener("click", () => {
-            const nextName = editingSiteName.trim();
-            if (!nextName) return;
-            savedSites = savedSites.map((site) => (site === editingSite ? nextName : site));
-            Object.entries(workData).forEach(([day, data]) => {
-              if (data.site === editingSite) workData[day] = { ...data, site: nextName };
-            });
-            if (draft.site === editingSite) draft.site = nextName;
-            editingSite = "";
-            editingSiteName = "";
-            saveSites();
-            saveMonthData();
-            renderInputPage();
-          });
-          document.querySelector(".cancel-site-edit").addEventListener("click", () => {
-            editingSite = "";
-            editingSiteName = "";
-            renderInputPage();
-          });
-        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        window.open(`https://line.me/R/msg/text/?${encodeURIComponent(message)}`, '_blank');
       }
+    } catch (error) {
+      console.error(error);
+      alert('LINE共有に失敗しました');
+    }
+  }
 
-      function renderInputForm() {
-        const data = draft || getSelectedData();
-        document.querySelector("#selectedDateTitle").textContent = `${year}年${month}月${selectedDay}日`;
-        document.querySelector("#siteInput").value = data.site;
-        document.querySelector("#priceInput").value = data.price;
-        document.querySelector("#savePreview").innerHTML = `
-          <strong>${data.site || "現場名未入力"}</strong><br>
-          ${data.mark} / ${Number(data.price || 0).toLocaleString()}円 / インボイス${data.invoice ? "有り" : "無し"}
-        `;
-        document.querySelector("#savedMessage").textContent = justSavedDay ? "カレンダーに反映しました" : "";
+  function bindInputs() {
+    byId('documentMode').addEventListener('change', () => {
+      enforceReceiptLock();
+      updatePreview();
+      autoSave();
+    });
 
-        document.querySelector("#markWork").className = `choice-button ${data.mark === "○" ? "active work" : ""}`;
-        document.querySelector("#markHalf").className = `choice-button ${data.mark === "△" ? "active half" : ""}`;
-        document.querySelector("#invoiceOn").className = `choice-button ${data.invoice ? "active invoice-on" : ""}`;
-        document.querySelector("#invoiceOff").className = `choice-button ${!data.invoice ? "active invoice-off" : ""}`;
-        document.querySelector("#saveButton").textContent = justSavedDay ? "決定済み" : "決定";
-        document.querySelector("#saveButton").classList.remove("saving");
-        document.querySelector("#saveButton").classList.toggle("saved", Boolean(justSavedDay));
-      }
+    byId('paymentConfirmed').addEventListener('change', () => {
+      updatePreview();
+      autoSave();
+    });
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      if (el.dataset.bound === '1') return;
+      el.dataset.bound = '1';
+      el.addEventListener('input', () => { updatePreview(); autoSave(); });
+      el.addEventListener('change', () => { updatePreview(); autoSave(); });
+    });
+  }
 
-      function renderInputPage() {
-        renderBase();
-        renderSavedBanner();
-        renderCalendarHead();
-        renderCalendar();
-        renderSiteHistory();
-        renderInputForm();
-      }
+  function createBlankItems(count) {
+    return Array.from({ length: count }, () => ({ name: '', qty: '', unit: '式', price: '' }));
+  }
 
-      function renderSummaryPage() {
-        renderBase();
-        syncCheckedGroups();
+  function ensureMinimumRows(count = 5) {
+    const current = document.querySelectorAll('.item-row:not(.item-head)').length;
+    for (let i = current; i < count; i++) addRow({}, { save: false });
+  }
 
-        const groups = getGroups();
-        const selected = getSelectedGroups();
-        const selectedTotal = selected.reduce((sum, group) => sum + group.grand, 0);
-        const allChecked = groups.length > 0 && groups.every((group) => checkedGroups[group.key]);
+  function runSelfTests() {
+    console.assert(typeof handleAutoSave === 'function', 'handleAutoSave should exist');
+    console.assert(yen(1234).includes('1,234'), 'yen formatter should format numbers');
+    console.assert(createBlankItems(5).length === 5, 'default item rows should be 5');
+    console.assert(Math.floor(12345 / 100) * 100 === 12300, 'price rounding should cut last two digits');
+    console.assert(typeof generatePdfBlob === 'function', 'generatePdfBlob should exist');
+    console.assert(typeof getTargetDocumentElement === 'function', 'target document selector should exist');
+    if (byId('paymentConfirmed')) byId('paymentConfirmed').checked = false;
+    byId('documentMode').value = 'receipt';
+    console.assert(enforceReceiptLock() === false, 'receipt lock should block unpaid receipt mode');
+    byId('paymentConfirmed').checked = true;
+    console.assert(enforceReceiptLock() === true, 'receipt lock should allow paid receipt mode');
+    byId('documentMode').value = 'invoice';
+  }
 
-        document.querySelector("#toggleAll").textContent = allChecked ? "全解除" : "全選択";
-        document.querySelector("#selectedTotal").textContent = `${selectedTotal.toLocaleString()}円`;
-        document.querySelector("#lineButton").disabled = selected.length === 0;
+  function init() {
+    loadAuto();
+    ensureMinimumRows(5);
+    bindInputs();
+    updatePreview();
+    runSelfTests();
+  }
 
-        if (groups.length === 0) {
-          document.querySelector("#summaryList").innerHTML = `<div class="notice">まだ集計する出勤データがありません。</div>`;
-          return;
-        }
-
-        document.querySelector("#summaryList").innerHTML = groups
-          .map(
-            (group) => `
-              <label class="summary-card">
-                <div class="row">
-                  <input class="summary-check" type="checkbox" data-group="${group.key}" ${checkedGroups[group.key] ? "checked" : ""}>
-                  <div class="summary-main">
-                    <div class="card-head">
-                      <div class="summary-site">${group.site}</div>
-                      <div class="invoice-label ${group.invoice ? "on" : "off"}">${group.invoice ? "有り" : "無し"}</div>
-                    </div>
-                    <div class="summary-stats">
-                      <div class="stat">○<b>${group.fullDays}日</b></div>
-                      <div class="stat">△<b>${group.halfDays}日</b></div>
-                      <div class="stat">換算<b>${group.workDays}日</b></div>
-                    </div>
-                    <div class="invoice-detail">
-                      <div>税抜<br><b>${group.total.toLocaleString()}円</b></div>
-                      <div>消費税<br><b>${group.tax.toLocaleString()}円</b></div>
-                      <div>請求額<br><b>${group.grand.toLocaleString()}円</b></div>
-                    </div>
-                  </div>
-                </div>
-              </label>
-            `,
-          )
-          .join("");
-
-        document.querySelectorAll(".summary-check").forEach((input) => {
-          input.addEventListener("change", () => {
-            checkedGroups[input.dataset.group] = input.checked;
-            renderSummaryPage();
-          });
-        });
-      }
-
-      function renderCurrentView() {
-        if (currentView === "input") renderInputPage();
-        else renderSummaryPage();
-      }
-
-      document.querySelector("#prevMonth").addEventListener("click", () => {
-        if (month === 1) {
-          year -= 1;
-          month = 12;
-        } else {
-          month -= 1;
-        }
-        selectedDay = 1;
-        loadMonthData();
-        resetDraft();
-        renderCurrentView();
-      });
-
-      document.querySelector("#nextMonth").addEventListener("click", () => {
-        if (month === 12) {
-          year += 1;
-          month = 1;
-        } else {
-          month += 1;
-        }
-        selectedDay = 1;
-        loadMonthData();
-        resetDraft();
-        renderCurrentView();
-      });
-
-      document.querySelector("#inputTab").addEventListener("click", () => {
-        currentView = "input";
-        renderInputPage();
-      });
-
-      document.querySelector("#summaryTab").addEventListener("click", () => {
-        currentView = "summary";
-        renderSummaryPage();
-      });
-
-      document.querySelector("#closingDay").addEventListener("input", (event) => {
-        setClosingDay(event.target.value);
-      });
-
-      document.querySelector("#siteInput").addEventListener("input", (event) => {
-        setDraft("site", event.target.value, false);
-        document.querySelector("#savePreview").innerHTML = `
-          <strong>${event.target.value || "現場名未入力"}</strong><br>
-          ${draft.mark} / ${Number(draft.price || 0).toLocaleString()}円 / インボイス${draft.invoice ? "有り" : "無し"}
-        `;
-      });
-
-      document.querySelector("#priceInput").addEventListener("input", (event) => {
-        setDraft("price", Number(event.target.value || 0), false);
-      });
-
-      document.querySelector("#markWork").addEventListener("click", () => setDraft("mark", "○"));
-      document.querySelector("#markHalf").addEventListener("click", () => setDraft("mark", "△"));
-      document.querySelector("#invoiceOn").addEventListener("click", () => setDraft("invoice", true));
-      document.querySelector("#invoiceOff").addEventListener("click", () => setDraft("invoice", false));
-      document.querySelector("#saveButton").addEventListener("click", saveSelectedDay);
-      document.querySelector("#toggleAll").addEventListener("click", () => {
-        const groups = getGroups();
-        const allChecked = groups.length > 0 && groups.every((group) => checkedGroups[group.key]);
-        groups.forEach((group) => {
-          checkedGroups[group.key] = !allChecked;
-        });
-        renderSummaryPage();
-      });
-      document.querySelector("#lineButton").addEventListener("click", shareToLine);
-
-      loadGlobalData();
-      loadMonthData();
-      resetDraft();
-      renderInputPage();
-    </script>
-  </body>
+  init();
+</script>
+</body>
 </html>
