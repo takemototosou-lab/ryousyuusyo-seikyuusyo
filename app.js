@@ -393,13 +393,38 @@ async function generatePdfBlob() {
   return window.html2pdf().set(opt).from(el.documentPreview).outputPdf("blob");
 }
 
-async function printPdf() {
+function openBlobPreview(blob, openedWindow = null) {
+  const url = URL.createObjectURL(blob);
+  const previewWindow = openedWindow && !openedWindow.closed ? openedWindow : window.open("", "_blank");
+
+  if (previewWindow) {
+    previewWindow.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
+    return;
+  }
+
+  window.location.href = url;
+}
+
+async function openPdfPreview() {
   if (enforceReceiptLock()) return;
+  const openedWindow = window.open("", "_blank");
+  if (openedWindow) {
+    openedWindow.document.write("<p>PDFを生成しています...</p>");
+  }
+
   if (!window.html2pdf) {
+    if (openedWindow) openedWindow.close();
     window.print();
     return;
   }
-  await window.html2pdf().set({ filename: getPdfName(), jsPDF: { unit: "mm", format: "a4" } }).from(el.documentPreview).save();
+
+  const blob = await generatePdfBlob();
+  if (!blob) {
+    if (openedWindow) openedWindow.close();
+    return;
+  }
+  openBlobPreview(blob, openedWindow);
 }
 
 async function sendToLine() {
@@ -437,7 +462,7 @@ function bindEvents() {
     addItem();
     handleChange();
   });
-  el.pdfButton.addEventListener("click", printPdf);
+  el.pdfButton.addEventListener("click", openPdfPreview);
   el.lineButton.addEventListener("click", sendToLine);
   el.backupButton.addEventListener("click", saveBackup);
   el.clearBackupsButton.addEventListener("click", () => setBackups([]));
