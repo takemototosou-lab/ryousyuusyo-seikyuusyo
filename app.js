@@ -406,24 +406,54 @@ function openBlobPreview(blob, openedWindow = null) {
   window.location.href = url;
 }
 
-async function openPdfPreview() {
+function openDataUrlPreview(blob, openedWindow = null) {
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const previewWindow = openedWindow && !openedWindow.closed ? openedWindow : window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.location.href = reader.result;
+      return;
+    }
+    window.location.href = reader.result;
+  });
+  reader.readAsDataURL(blob);
+}
+
+async function sharePdfOrPreview() {
   if (enforceReceiptLock()) return;
-  const openedWindow = window.open("", "_blank");
-  if (openedWindow) {
-    openedWindow.document.write("<p>PDFを生成しています...</p>");
-  }
 
   if (!window.html2pdf) {
-    if (openedWindow) openedWindow.close();
     window.print();
     return;
   }
 
   const blob = await generatePdfBlob();
-  if (!blob) {
-    if (openedWindow) openedWindow.close();
+  if (!blob) return;
+
+  const data = collectData();
+  const title = data.documentMode === "receipt" ? "領収書" : "請求書";
+  const file = new File([blob], getPdfName(), { type: "application/pdf" });
+
+  if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ title, files: [file] });
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+
+  const openedWindow = window.open("", "_blank");
+  if (openedWindow) {
+    openedWindow.document.write("<p>PDFを開いています...</p>");
+  }
+
+  const isAppleMobile = /iP(hone|ad|od)/.test(navigator.userAgent);
+  if (isAppleMobile) {
+    openDataUrlPreview(blob, openedWindow);
     return;
   }
+
   openBlobPreview(blob, openedWindow);
 }
 
@@ -462,7 +492,7 @@ function bindEvents() {
     addItem();
     handleChange();
   });
-  el.pdfButton.addEventListener("click", openPdfPreview);
+  el.pdfButton.addEventListener("click", sharePdfOrPreview);
   el.lineButton.addEventListener("click", sendToLine);
   el.backupButton.addEventListener("click", saveBackup);
   el.clearBackupsButton.addEventListener("click", () => setBackups([]));
