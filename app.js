@@ -1,540 +1,486 @@
-const weekDays = ["日", "月", "火", "水", "木", "金", "土"];
-const siteStorageKey = "work-calendar-sites";
-const closingStorageKey = "work-calendar-closing-days";
+const STORAGE_KEY = "takemototosou-invoice-receipt:auto";
+const BACKUP_KEY = "takemototosou-invoice-receipt:backups";
+const CUSTOMER_KEY = "takemototosou-invoice-receipt:customers";
+const ITEM_COUNT = 5;
 
-const today = new Date();
-let year = today.getFullYear();
-let month = today.getMonth() + 1;
-let selectedDay = today.getDate();
-let currentView = "input";
-let workData = {};
-let savedSites = [];
-let closingDays = {};
-let draft = null;
-let editingSite = "";
-let editingSiteName = "";
-let justSavedDay = null;
-let checkedGroups = {};
-
-const defaultWork = {
-  site: "",
-  mark: "○",
-  price: 22000,
-  invoice: true,
+const state = {
+  documentMode: "invoice",
+  saveTimer: 0,
 };
 
-function readStorage(key, fallback) {
+const ids = [
+  "documentForm",
+  "saveStatus",
+  "paymentConfirmed",
+  "receiptLockNotice",
+  "customerName",
+  "subject",
+  "issueDate",
+  "dueDate",
+  "invoiceNumber",
+  "receiptNumber",
+  "companyName",
+  "companyPerson",
+  "companyAddress",
+  "companyTel",
+  "invoiceRegistration",
+  "bankInfo",
+  "taxExempt",
+  "itemsList",
+  "notes",
+  "pdfButton",
+  "lineButton",
+  "backupButton",
+  "clearBackupsButton",
+  "backupList",
+  "documentPreview",
+  "previewLabel",
+  "previewTotal",
+  "addItemButton",
+  "saveCustomerButton",
+  "openCustomerButton",
+  "customerDialog",
+  "closeCustomerButton",
+  "customerList",
+];
+
+const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
+
+function safeJsonParse(value, fallback) {
   try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
+    return value ? JSON.parse(value) : fallback;
   } catch {
     return fallback;
   }
 }
 
-function writeStorage(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function getMonthKey() {
-  return `${year}-${String(month).padStart(2, "0")}`;
+function yen(value) {
+  return `${Math.round(Number(value) || 0).toLocaleString("ja-JP")}円`;
 }
 
-function getWorkStorageKey() {
-  return `work-calendar-${getMonthKey()}`;
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function getClosingDay() {
-  return closingDays[getMonthKey()] ?? 25;
+function createBlankItems(count = ITEM_COUNT) {
+  return Array.from({ length: count }, () => ({ name: "", quantity: "", unitPrice: "" }));
 }
 
-function setClosingDay(value) {
-  const safe = Math.min(31, Math.max(1, Number(value) || 1));
-  closingDays = { ...closingDays, [getMonthKey()]: safe };
-  writeStorage(closingStorageKey, closingDays);
+function getText(id) {
+  return el[id]?.value.trim() || "";
 }
 
-function loadMonthData() {
-  workData = readStorage(getWorkStorageKey(), {});
+function getItems() {
+  return [...el.itemsList.querySelectorAll(".item-row")]
+    .map((row) => ({
+      name: row.querySelector(".item-name-input").value.trim(),
+      quantity: Number(row.querySelector(".item-quantity-input").value) || 0,
+      unitPrice: Number(row.querySelector(".item-price-input").value) || 0,
+    }))
+    .filter((item) => item.name || item.quantity || item.unitPrice);
 }
 
-function saveMonthData() {
-  writeStorage(getWorkStorageKey(), workData);
+function calculateTotals(items) {
+  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  const tax = el.taxExempt.checked ? 0 : Math.round(subtotal * 0.1);
+  return { subtotal, tax, total: subtotal + tax };
 }
 
-function loadGlobalData() {
-  savedSites = readStorage(siteStorageKey, []);
-  closingDays = readStorage(closingStorageKey, {});
-}
-
-function saveSites() {
-  writeStorage(siteStorageKey, savedSites);
-}
-
-function getSelectedData() {
-  return workData[selectedDay] || { ...defaultWork };
-}
-
-function resetDraft() {
-  draft = { ...getSelectedData() };
-  justSavedDay = null;
-}
-
-function getDaysInMonth() {
-  return new Date(year, month, 0).getDate();
-}
-
-function getCalendarDays() {
-  const firstDay = new Date(year, month - 1, 1).getDay();
-  const blanks = Array.from({ length: firstDay }, (_, index) => ({ blank: true, key: `blank-${index}` }));
-  const days = Array.from({ length: getDaysInMonth() }, (_, index) => {
-    const day = index + 1;
-    const date = new Date(year, month - 1, day);
-    return {
-      blank: false,
-      key: `day-${day}`,
-      day,
-      week: weekDays[date.getDay()],
-    };
-  });
-  return [...blanks, ...days];
-}
-
-function setDraft(key, value, shouldRender = true) {
-  draft = { ...(draft || getSelectedData()), [key]: value };
-  justSavedDay = null;
-  if (shouldRender) renderInputPage();
-}
-
-function rememberSite(site) {
-  const trimmed = site.trim();
-  if (!trimmed) return;
-  if (!savedSites.includes(trimmed)) {
-    savedSites = [...savedSites, trimmed];
-    saveSites();
-  }
-}
-
-function updateCalendarCell(day, data) {
-  const cell = document.querySelector(`.day-button[data-day="${day}"]`);
-  if (!cell) return;
-
-  const mark = cell.querySelector(".day-mark");
-  const site = cell.querySelector(".day-site");
-  if (mark) mark.textContent = data.mark || "-";
-  if (site) site.textContent = data.site || "";
-
-  cell.classList.add("saved");
-  cell.classList.add("selected");
-  requestAnimationFrame(() => {
-    cell.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
-}
-
-function saveSelectedDay() {
-  const saveButtonBefore = document.querySelector("#saveButton");
-  if (saveButtonBefore) {
-    saveButtonBefore.textContent = "保存中...";
-    saveButtonBefore.classList.remove("saved");
-    saveButtonBefore.classList.add("saving");
-  }
-
-  const siteInput = document.querySelector("#siteInput");
-  const priceInput = document.querySelector("#priceInput");
-  const currentDraft = draft || getSelectedData();
-  const draftData = {
-    ...currentDraft,
-    site: (siteInput ? siteInput.value : currentDraft.site).trim(),
-    price: priceInput ? Number(priceInput.value || 0) : Number(currentDraft.price || 0),
+function collectData() {
+  return {
+    documentMode: state.documentMode,
+    paymentConfirmed: el.paymentConfirmed.checked,
+    customerName: getText("customerName"),
+    subject: getText("subject"),
+    issueDate: el.issueDate.value || todayString(),
+    dueDate: el.dueDate.value,
+    invoiceNumber: getText("invoiceNumber"),
+    receiptNumber: getText("receiptNumber"),
+    companyName: getText("companyName"),
+    companyPerson: getText("companyPerson"),
+    companyAddress: getText("companyAddress"),
+    companyTel: getText("companyTel"),
+    invoiceRegistration: getText("invoiceRegistration"),
+    bankInfo: getText("bankInfo"),
+    taxExempt: el.taxExempt.checked,
+    notes: el.notes.value,
+    items: getItems(),
   };
+}
 
-  draft = { ...draftData };
-  workData[selectedDay] = { ...draftData };
-  justSavedDay = selectedDay;
-  rememberSite(draftData.site);
-  saveMonthData();
-  renderCalendar();
-  updateCalendarCell(selectedDay, draftData);
-  renderSavedBanner();
-  renderInputForm();
-  renderSiteHistory();
+function addItem(item = {}) {
+  const row = document.createElement("div");
+  row.className = "item-row";
+  row.innerHTML = `
+    <label class="item-name">
+      <span>内容</span>
+      <input class="item-name-input" placeholder="材料費 / 作業費" value="${escapeHtml(item.name)}" />
+    </label>
+    <label>
+      <span>数量</span>
+      <input class="item-quantity-input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(item.quantity)}" />
+    </label>
+    <label>
+      <span>単価</span>
+      <input class="item-price-input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(item.unitPrice)}" />
+    </label>
+    <button class="remove-item" type="button" aria-label="明細を削除">×</button>
+  `;
+  row.querySelector(".remove-item").addEventListener("click", () => {
+    row.remove();
+    ensureMinimumRows();
+    handleChange();
+  });
+  row.querySelectorAll("input").forEach((input) => input.addEventListener("input", handleChange));
+  el.itemsList.append(row);
+}
 
-  const saveButton = document.querySelector("#saveButton");
-  saveButton.textContent = "決定済み";
-  saveButton.classList.remove("saving");
-  saveButton.classList.add("saved");
-
-  const savedCell = document.querySelector(`.day-button[data-day="${selectedDay}"]`);
-  if (savedCell) {
-    savedCell.scrollIntoView({ behavior: "smooth", block: "center" });
+function ensureMinimumRows() {
+  while (el.itemsList.children.length < ITEM_COUNT) {
+    addItem();
   }
 }
 
-function getGroups() {
-  const map = {};
-  Object.values(workData).forEach((data) => {
-    if (!data.site || data.mark === "×") return;
-    const key = `${data.site}-${data.invoice ? "invoice" : "no-invoice"}`;
-    if (!map[key]) {
-      map[key] = {
-        key,
-        site: data.site,
-        invoice: data.invoice,
-        fullDays: 0,
-        halfDays: 0,
-        total: 0,
-      };
-    }
+function renderItems(items = createBlankItems()) {
+  el.itemsList.innerHTML = "";
+  const rows = items.length ? items : createBlankItems();
+  rows.forEach(addItem);
+  ensureMinimumRows();
+}
 
-    const price = Number(data.price || 0);
-    map[key].total += data.mark === "△" ? price / 2 : price;
-    if (data.mark === "○") map[key].fullDays += 1;
-    if (data.mark === "△") map[key].halfDays += 1;
+function setMode(mode) {
+  state.documentMode = mode === "receipt" ? "receipt" : "invoice";
+  document.querySelectorAll("[data-mode-button]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.modeButton === state.documentMode);
   });
-
-  return Object.values(map).map((group) => {
-    const tax = group.invoice ? Math.floor(group.total * 0.1) : 0;
-    return {
-      ...group,
-      tax,
-      grand: group.total + tax,
-      workDays: group.fullDays + group.halfDays * 0.5,
-    };
-  });
+  enforceReceiptLock();
+  handleChange();
 }
 
-function syncCheckedGroups() {
-  const next = {};
-  getGroups().forEach((group) => {
-    next[group.key] = checkedGroups[group.key] ?? true;
-  });
-  checkedGroups = next;
+function enforceReceiptLock() {
+  const locked = state.documentMode === "receipt" && !el.paymentConfirmed.checked;
+  el.receiptLockNotice.classList.toggle("hidden", !locked);
+  el.pdfButton.disabled = locked;
+  el.lineButton.disabled = locked;
+  return locked;
 }
 
-function getSelectedGroups() {
-  return getGroups().filter((group) => checkedGroups[group.key]);
-}
+function renderPreview() {
+  const data = collectData();
+  const items = data.items.length ? data.items : createBlankItems(1);
+  const totals = calculateTotals(items);
+  const isReceipt = data.documentMode === "receipt";
+  const title = isReceipt ? "領収書" : "請求書";
+  const number = isReceipt ? data.receiptNumber : data.invoiceNumber;
+  const taxNotice = data.taxExempt ? "免税事業者として消費税は請求していません。" : `消費税(10%): ${yen(totals.tax)}`;
+  const dueLine = !isReceipt && data.dueDate ? `<div>お支払期限: ${escapeHtml(data.dueDate)}</div>` : "";
+  const receiptLine = isReceipt ? "<p>上記金額を正に領収いたしました。</p>" : "";
 
-function shareToLine() {
-  const selected = getSelectedGroups();
-  if (selected.length === 0) return;
-
-  const text = selected
-    .map((group) =>
-      [
-        `現場名: ${group.site}`,
-        `○日数: ${group.fullDays}日`,
-        `△日数: ${group.halfDays}日`,
-        `換算日数: ${group.workDays}日`,
-        `税抜: ${group.total.toLocaleString()}円`,
-        `消費税: ${group.tax.toLocaleString()}円`,
-        `請求額: ${group.grand.toLocaleString()}円`,
-      ].join("\n"),
-    )
-    .join("\n\n");
-
-  window.open(`https://social-plugins.line.me/lineit/share?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-}
-
-function renderBase() {
-  document.querySelector("#monthTitle").textContent = `${year}年 ${month}月`;
-  document.querySelector("#closingDay").value = getClosingDay();
-  document.querySelector("#inputTab").classList.toggle("active", currentView === "input");
-  document.querySelector("#summaryTab").classList.toggle("active", currentView === "summary");
-  document.querySelector("#inputPage").classList.toggle("hidden", currentView !== "input");
-  document.querySelector("#summaryPage").classList.toggle("hidden", currentView !== "summary");
-}
-
-function renderCalendarHead() {
-  document.querySelector("#calendarHead").innerHTML = weekDays
-    .map((week) => `<div class="${week === "日" ? "week-sun" : week === "土" ? "week-sat" : ""}">${week}</div>`)
-    .join("");
-}
-
-function renderCalendar() {
-  document.querySelector("#calendar").innerHTML = getCalendarDays()
-    .map((item) => {
-      if (item.blank) return `<div class="blank-day"></div>`;
-
-      const data = item.day === justSavedDay ? draft || workData[item.day] || {} : workData[item.day] || {};
-      const isSelected = selectedDay === item.day;
-      const isSaved = justSavedDay === item.day;
-
-      return `
-        <button type="button" data-day="${item.day}" class="day-button ${isSelected ? "selected" : ""} ${isSaved ? "saved" : ""}">
-          <div class="day-number">${item.day}</div>
-          <div class="day-week ${item.week === "日" ? "week-sun" : item.week === "土" ? "week-sat" : ""}">${item.week}</div>
-          <div class="day-mark">${data.mark || "-"}</div>
-          <div class="day-site">${data.site || ""}</div>
-        </button>
-      `;
-    })
-    .join("");
-
-  document.querySelectorAll(".day-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedDay = Number(button.dataset.day);
-      resetDraft();
-      renderInputPage();
-    });
-  });
-}
-
-function renderSavedBanner() {
-  const banner = document.querySelector("#savedBanner");
-  if (!justSavedDay) {
-    banner.innerHTML = "";
-    return;
-  }
-  const data = draft || getSelectedData();
-  banner.innerHTML = `
-    <div class="saved-banner">
-      <strong>保存しました</strong>
-      ${month}月${justSavedDay}日 / ${data.site || "現場名未入力"} / ${data.mark} / インボイス${data.invoice ? "有り" : "無し"}
+  el.previewLabel.textContent = `${title}プレビュー`;
+  el.previewTotal.textContent = yen(totals.total);
+  el.documentPreview.innerHTML = `
+    <div class="doc">
+      <h2 class="doc-title">${title}</h2>
+      <div class="doc-meta">
+        <div>発行日: ${escapeHtml(data.issueDate)}</div>
+        <div>No: ${escapeHtml(number || "-")}</div>
+        ${dueLine}
+      </div>
+      <div class="doc-parties">
+        <div>
+          <div class="doc-customer">${escapeHtml(data.customerName || "宛名未入力")} 御中</div>
+          <p class="doc-subject">件名: ${escapeHtml(data.subject || "-")}</p>
+          ${receiptLine}
+        </div>
+        <div class="doc-company">
+          <strong>${escapeHtml(data.companyName || "takemototosou")}</strong><br />
+          ${escapeHtml(data.companyPerson)}<br />
+          ${escapeHtml(data.companyAddress)}<br />
+          ${data.companyTel ? `TEL: ${escapeHtml(data.companyTel)}<br />` : ""}
+          ${!data.taxExempt && data.invoiceRegistration ? `登録番号: ${escapeHtml(data.invoiceRegistration)}` : ""}
+        </div>
+      </div>
+      <div class="doc-total">合計 ${yen(totals.total)}</div>
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>内容</th>
+            <th>数量</th>
+            <th>単価</th>
+            <th>金額</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items
+            .map(
+              (item) => `
+                <tr>
+                  <td>${escapeHtml(item.name || "")}</td>
+                  <td>${item.quantity || ""}</td>
+                  <td>${item.unitPrice ? yen(item.unitPrice) : ""}</td>
+                  <td>${item.quantity && item.unitPrice ? yen(item.quantity * item.unitPrice) : ""}</td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+      <table class="summary-table">
+        <tr><th>小計</th><td>${yen(totals.subtotal)}</td></tr>
+        <tr><th>${data.taxExempt ? "消費税" : "消費税 10%"}</th><td>${data.taxExempt ? "免税" : yen(totals.tax)}</td></tr>
+        <tr><th>合計</th><td>${yen(totals.total)}</td></tr>
+      </table>
+      <div class="doc-notes">
+        <strong>備考</strong><br />
+        ${escapeHtml(data.notes || taxNotice)}
+        ${!isReceipt && data.bankInfo ? `<br />振込先: ${escapeHtml(data.bankInfo)}` : ""}
+      </div>
     </div>
   `;
 }
 
-function renderSiteHistory() {
-  const root = document.querySelector("#siteHistory");
-  if (savedSites.length === 0) {
-    root.innerHTML = `<div class="history-empty">保存すると現場名がここに表示されます。</div>`;
+function autosave() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(collectData()));
+  el.saveStatus.textContent = "保存済み";
+}
+
+function handleChange() {
+  enforceReceiptLock();
+  renderPreview();
+  el.saveStatus.textContent = "保存中";
+  clearTimeout(state.saveTimer);
+  state.saveTimer = window.setTimeout(autosave, 300);
+}
+
+function applyData(data = {}) {
+  state.documentMode = data.documentMode || "invoice";
+  el.paymentConfirmed.checked = Boolean(data.paymentConfirmed);
+  [
+    "customerName",
+    "subject",
+    "issueDate",
+    "dueDate",
+    "invoiceNumber",
+    "receiptNumber",
+    "companyName",
+    "companyPerson",
+    "companyAddress",
+    "companyTel",
+    "invoiceRegistration",
+    "bankInfo",
+    "notes",
+  ].forEach((id) => {
+    el[id].value = data[id] || "";
+  });
+  el.taxExempt.checked = Boolean(data.taxExempt);
+  renderItems(data.items?.length ? data.items : createBlankItems());
+  setMode(state.documentMode);
+}
+
+function loadAutosave() {
+  const data = safeJsonParse(localStorage.getItem(STORAGE_KEY), {});
+  if (!data.issueDate) {
+    data.issueDate = todayString();
+  }
+  applyData(data);
+}
+
+function getBackups() {
+  return safeJsonParse(localStorage.getItem(BACKUP_KEY), []);
+}
+
+function setBackups(backups) {
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(backups.slice(0, 30)));
+  renderBackups();
+}
+
+function saveBackup() {
+  const data = collectData();
+  const backups = getBackups();
+  backups.unshift({
+    id: crypto.randomUUID?.() || String(Date.now()),
+    savedAt: new Date().toISOString(),
+    title: `${data.customerName || "宛名未入力"} / ${data.subject || "件名なし"}`,
+    data,
+  });
+  setBackups(backups);
+}
+
+function renderBackups() {
+  const backups = getBackups();
+  el.backupList.innerHTML = backups.length
+    ? backups
+        .map(
+          (backup) => `
+            <div class="backup-item">
+              <strong>${escapeHtml(backup.title)}</strong>
+              <span>${new Date(backup.savedAt).toLocaleString("ja-JP")}</span>
+              <div class="item-actions">
+                <button class="secondary" type="button" data-restore-backup="${escapeHtml(backup.id)}">復元</button>
+                <button class="secondary danger" type="button" data-delete-backup="${escapeHtml(backup.id)}">削除</button>
+              </div>
+            </div>
+          `,
+        )
+        .join("")
+    : '<div class="notice">まだバックアップはありません。</div>';
+}
+
+function getCustomers() {
+  return safeJsonParse(localStorage.getItem(CUSTOMER_KEY), []);
+}
+
+function setCustomers(customers) {
+  localStorage.setItem(CUSTOMER_KEY, JSON.stringify(customers));
+}
+
+function saveCustomer() {
+  const name = getText("customerName");
+  if (!name) return;
+  const customers = getCustomers().filter((customer) => customer.name !== name);
+  customers.unshift({ name, subject: getText("subject"), updatedAt: new Date().toISOString() });
+  setCustomers(customers.slice(0, 50));
+  renderCustomers();
+}
+
+function renderCustomers() {
+  const customers = getCustomers();
+  el.customerList.innerHTML = customers.length
+    ? customers
+        .map(
+          (customer) => `
+            <div class="customer-item">
+              <strong>${escapeHtml(customer.name)}</strong>
+              <span>${escapeHtml(customer.subject || "")}</span>
+              <button class="secondary" type="button" data-use-customer="${escapeHtml(customer.name)}">使う</button>
+            </div>
+          `,
+        )
+        .join("")
+    : '<div class="notice">記憶した宛名はありません。</div>';
+}
+
+function getPdfName() {
+  const data = collectData();
+  const type = data.documentMode === "receipt" ? "領収書" : "請求書";
+  const customer = data.customerName || "宛名未入力";
+  return `${type}_${customer}_${data.issueDate || todayString()}.pdf`;
+}
+
+async function generatePdfBlob() {
+  if (enforceReceiptLock()) return null;
+  if (!window.html2pdf) {
+    window.print();
+    return null;
+  }
+  const opt = {
+    margin: [8, 8, 8, 8],
+    filename: getPdfName(),
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+  };
+  return window.html2pdf().set(opt).from(el.documentPreview).outputPdf("blob");
+}
+
+async function printPdf() {
+  if (enforceReceiptLock()) return;
+  if (!window.html2pdf) {
+    window.print();
+    return;
+  }
+  await window.html2pdf().set({ filename: getPdfName(), jsPDF: { unit: "mm", format: "a4" } }).from(el.documentPreview).save();
+}
+
+async function sendToLine() {
+  if (enforceReceiptLock()) return;
+  const data = collectData();
+  const title = data.documentMode === "receipt" ? "領収書" : "請求書";
+  const text = `${title}を作成しました。\n宛名: ${data.customerName || "-"}\n合計: ${el.previewTotal.textContent}`;
+
+  if (navigator.canShare && navigator.share) {
+    const blob = await generatePdfBlob();
+    if (blob) {
+      const file = new File([blob], getPdfName(), { type: "application/pdf" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] });
+        return;
+      }
+    }
+    await navigator.share({ title, text });
     return;
   }
 
-  root.innerHTML = savedSites
-    .map((site) => {
-      if (editingSite === site) {
-        return `
-          <div class="history-item">
-            <input class="edit-site-input" value="${editingSiteName}" />
-            <div class="row" style="margin-top:8px;">
-              <button type="button" class="small-button save-site-edit">保存</button>
-              <button type="button" class="small-button cancel-site-edit">戻る</button>
-            </div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="history-item">
-          <div class="row">
-            <button type="button" class="site-select" data-site="${site}">${site}</button>
-            <button type="button" class="small-button site-edit" data-site="${site}">編集</button>
-            <button type="button" class="small-button danger site-delete" data-site="${site}">削除</button>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-
-  document.querySelectorAll(".site-select").forEach((button) => {
-    button.addEventListener("click", () => setDraft("site", button.dataset.site));
-  });
-  document.querySelectorAll(".site-edit").forEach((button) => {
-    button.addEventListener("click", () => {
-      editingSite = button.dataset.site;
-      editingSiteName = button.dataset.site;
-      renderInputPage();
-    });
-  });
-  document.querySelectorAll(".site-delete").forEach((button) => {
-    button.addEventListener("click", () => {
-      const site = button.dataset.site;
-      savedSites = savedSites.filter((item) => item !== site);
-      if (draft.site === site) draft.site = "";
-      if (editingSite === site) {
-        editingSite = "";
-        editingSiteName = "";
-      }
-      saveSites();
-      renderInputPage();
-    });
-  });
-
-  const editInput = document.querySelector(".edit-site-input");
-  if (editInput) {
-    editInput.addEventListener("input", (event) => {
-      editingSiteName = event.target.value;
-    });
-    document.querySelector(".save-site-edit").addEventListener("click", () => {
-      const nextName = editingSiteName.trim();
-      if (!nextName) return;
-      savedSites = savedSites.map((site) => (site === editingSite ? nextName : site));
-      Object.entries(workData).forEach(([day, data]) => {
-        if (data.site === editingSite) workData[day] = { ...data, site: nextName };
-      });
-      if (draft.site === editingSite) draft.site = nextName;
-      editingSite = "";
-      editingSiteName = "";
-      saveSites();
-      saveMonthData();
-      renderInputPage();
-    });
-    document.querySelector(".cancel-site-edit").addEventListener("click", () => {
-      editingSite = "";
-      editingSiteName = "";
-      renderInputPage();
-    });
-  }
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
+  window.open(lineUrl, "_blank", "noopener,noreferrer");
 }
 
-function renderInputForm() {
-  const data = draft || getSelectedData();
-  document.querySelector("#selectedDateTitle").textContent = `${year}年${month}月${selectedDay}日`;
-  document.querySelector("#siteInput").value = data.site;
-  document.querySelector("#priceInput").value = data.price;
-  document.querySelector("#savePreview").innerHTML = `
-    <strong>${data.site || "現場名未入力"}</strong><br>
-    ${data.mark} / ${Number(data.price || 0).toLocaleString()}円 / インボイス${data.invoice ? "有り" : "無し"}
-  `;
-  document.querySelector("#savedMessage").textContent = justSavedDay ? "カレンダーに反映しました" : "";
-
-  document.querySelector("#markWork").className = `choice-button ${data.mark === "○" ? "active work" : ""}`;
-  document.querySelector("#markHalf").className = `choice-button ${data.mark === "△" ? "active half" : ""}`;
-  document.querySelector("#invoiceOn").className = `choice-button ${data.invoice ? "active invoice-on" : ""}`;
-  document.querySelector("#invoiceOff").className = `choice-button ${!data.invoice ? "active invoice-off" : ""}`;
-  document.querySelector("#saveButton").textContent = justSavedDay ? "決定済み" : "決定";
-  document.querySelector("#saveButton").classList.remove("saving");
-  document.querySelector("#saveButton").classList.toggle("saved", Boolean(justSavedDay));
-}
-
-function renderInputPage() {
-  renderBase();
-  renderSavedBanner();
-  renderCalendarHead();
-  renderCalendar();
-  renderSiteHistory();
-  renderInputForm();
-}
-
-function renderSummaryPage() {
-  renderBase();
-  syncCheckedGroups();
-
-  const groups = getGroups();
-  const selected = getSelectedGroups();
-  const selectedTotal = selected.reduce((sum, group) => sum + group.grand, 0);
-  const allChecked = groups.length > 0 && groups.every((group) => checkedGroups[group.key]);
-
-  document.querySelector("#toggleAll").textContent = allChecked ? "全解除" : "全選択";
-  document.querySelector("#selectedTotal").textContent = `${selectedTotal.toLocaleString()}円`;
-  document.querySelector("#lineButton").disabled = selected.length === 0;
-
-  if (groups.length === 0) {
-    document.querySelector("#summaryList").innerHTML = `<div class="notice">まだ集計する出勤データがありません。</div>`;
-    return;
-  }
-
-  document.querySelector("#summaryList").innerHTML = groups
-    .map(
-      (group) => `
-        <label class="summary-card">
-          <div class="row">
-            <input class="summary-check" type="checkbox" data-group="${group.key}" ${checkedGroups[group.key] ? "checked" : ""}>
-            <div class="summary-main">
-              <div class="card-head">
-                <div class="summary-site">${group.site}</div>
-                <div class="invoice-label ${group.invoice ? "on" : "off"}">${group.invoice ? "有り" : "無し"}</div>
-              </div>
-              <div class="summary-stats">
-                <div class="stat">○<b>${group.fullDays}日</b></div>
-                <div class="stat">△<b>${group.halfDays}日</b></div>
-                <div class="stat">換算<b>${group.workDays}日</b></div>
-              </div>
-              <div class="invoice-detail">
-                <div>税抜<br><b>${group.total.toLocaleString()}円</b></div>
-                <div>消費税<br><b>${group.tax.toLocaleString()}円</b></div>
-                <div>請求額<br><b>${group.grand.toLocaleString()}円</b></div>
-              </div>
-            </div>
-          </div>
-        </label>
-      `,
-    )
-    .join("");
-
-  document.querySelectorAll(".summary-check").forEach((input) => {
-    input.addEventListener("change", () => {
-      checkedGroups[input.dataset.group] = input.checked;
-      renderSummaryPage();
-    });
+function bindEvents() {
+  document.querySelectorAll("[data-mode-button]").forEach((button) => {
+    button.addEventListener("click", () => setMode(button.dataset.modeButton));
+  });
+  el.documentForm.querySelectorAll("input, textarea").forEach((input) => {
+    input.addEventListener("input", handleChange);
+    input.addEventListener("change", handleChange);
+  });
+  el.addItemButton.addEventListener("click", () => {
+    addItem();
+    handleChange();
+  });
+  el.pdfButton.addEventListener("click", printPdf);
+  el.lineButton.addEventListener("click", sendToLine);
+  el.backupButton.addEventListener("click", saveBackup);
+  el.clearBackupsButton.addEventListener("click", () => setBackups([]));
+  el.saveCustomerButton.addEventListener("click", saveCustomer);
+  el.openCustomerButton.addEventListener("click", () => {
+    renderCustomers();
+    el.customerDialog.showModal();
+  });
+  el.closeCustomerButton.addEventListener("click", () => el.customerDialog.close());
+  el.backupList.addEventListener("click", (event) => {
+    const restoreId = event.target.dataset.restoreBackup;
+    const deleteId = event.target.dataset.deleteBackup;
+    if (restoreId) {
+      const backup = getBackups().find((item) => item.id === restoreId);
+      if (backup) applyData(backup.data);
+    }
+    if (deleteId) {
+      setBackups(getBackups().filter((item) => item.id !== deleteId));
+    }
+  });
+  el.customerList.addEventListener("click", (event) => {
+    const name = event.target.dataset.useCustomer;
+    if (!name) return;
+    const customer = getCustomers().find((item) => item.name === name);
+    if (!customer) return;
+    el.customerName.value = customer.name;
+    if (customer.subject) el.subject.value = customer.subject;
+    el.customerDialog.close();
+    handleChange();
   });
 }
 
-function renderCurrentView() {
-  if (currentView === "input") renderInputPage();
-  else renderSummaryPage();
+function runSelfTests() {
+  console.assert(createBlankItems(3).length === 3, "createBlankItems should return requested rows");
+  console.assert(calculateTotals([{ name: "test", quantity: 2, unitPrice: 1000 }]).subtotal === 2000, "subtotal should multiply quantity and unit price");
 }
 
-document.querySelector("#prevMonth").addEventListener("click", () => {
-  if (month === 1) {
-    year -= 1;
-    month = 12;
-  } else {
-    month -= 1;
-  }
-  selectedDay = 1;
-  loadMonthData();
-  resetDraft();
-  renderCurrentView();
-});
+function init() {
+  bindEvents();
+  loadAutosave();
+  renderBackups();
+  renderCustomers();
+  runSelfTests();
+}
 
-document.querySelector("#nextMonth").addEventListener("click", () => {
-  if (month === 12) {
-    year += 1;
-    month = 1;
-  } else {
-    month += 1;
-  }
-  selectedDay = 1;
-  loadMonthData();
-  resetDraft();
-  renderCurrentView();
-});
-
-document.querySelector("#inputTab").addEventListener("click", () => {
-  currentView = "input";
-  renderInputPage();
-});
-
-document.querySelector("#summaryTab").addEventListener("click", () => {
-  currentView = "summary";
-  renderSummaryPage();
-});
-
-document.querySelector("#closingDay").addEventListener("input", (event) => {
-  setClosingDay(event.target.value);
-});
-
-document.querySelector("#siteInput").addEventListener("input", (event) => {
-  setDraft("site", event.target.value, false);
-  document.querySelector("#savePreview").innerHTML = `
-    <strong>${event.target.value || "現場名未入力"}</strong><br>
-    ${draft.mark} / ${Number(draft.price || 0).toLocaleString()}円 / インボイス${draft.invoice ? "有り" : "無し"}
-  `;
-});
-
-document.querySelector("#priceInput").addEventListener("input", (event) => {
-  setDraft("price", Number(event.target.value || 0), false);
-});
-
-document.querySelector("#markWork").addEventListener("click", () => setDraft("mark", "○"));
-document.querySelector("#markHalf").addEventListener("click", () => setDraft("mark", "△"));
-document.querySelector("#invoiceOn").addEventListener("click", () => setDraft("invoice", true));
-document.querySelector("#invoiceOff").addEventListener("click", () => setDraft("invoice", false));
-document.querySelector("#saveButton").addEventListener("click", saveSelectedDay);
-document.querySelector("#toggleAll").addEventListener("click", () => {
-  const groups = getGroups();
-  const allChecked = groups.length > 0 && groups.every((group) => checkedGroups[group.key]);
-  groups.forEach((group) => {
-    checkedGroups[group.key] = !allChecked;
-  });
-  renderSummaryPage();
-});
-document.querySelector("#lineButton").addEventListener("click", shareToLine);
-
-loadGlobalData();
-loadMonthData();
-resetDraft();
-renderInputPage();
+document.addEventListener("DOMContentLoaded", init);

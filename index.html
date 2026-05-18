@@ -2,95 +2,160 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f3f4f6" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f4ed" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="請求書・領収書" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <title>takemototosou 出勤日管理</title>
+    <meta name="format-detection" content="telephone=no" />
+    <title>takemototosou 請求書・領収書</title>
     <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <script defer src="app.js"></script>
   </head>
-
   <body>
-    <main class="page">
-      <div class="app">
-        <div class="header">
-          <button class="nav-button" id="prevMonth" type="button">←</button>
-          <h1 id="monthTitle"></h1>
-          <button class="nav-button" id="nextMonth" type="button">→</button>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">takemototosou</p>
+          <h1>請求書・領収書</h1>
         </div>
+        <div class="save-status" id="saveStatus">保存済み</div>
+      </header>
 
-        <div class="tabs">
-          <button class="tab-button active" id="inputTab" type="button">入力</button>
-          <button class="tab-button" id="summaryTab" type="button">集計</button>
+      <section class="mode-panel" aria-label="書類切替">
+        <div class="segmented" role="group">
+          <button class="segment is-active" type="button" data-mode-button="invoice">請求書</button>
+          <button class="segment" type="button" data-mode-button="receipt">領収書</button>
         </div>
+        <label class="toggle-row">
+          <input id="paymentConfirmed" type="checkbox" />
+          <span>入金確認済み</span>
+        </label>
+      </section>
 
-        <section class="field">
-          <label for="closingDay">締め日</label>
-          <input id="closingDay" type="number" min="1" max="31" inputmode="numeric" />
-        </section>
+      <section class="notice hidden" id="receiptLockNotice">
+        領収書は入金確認済みにすると作成できます。
+      </section>
 
-        <section id="inputPage">
-          <div id="savedBanner"></div>
-          <div class="calendar-head" id="calendarHead"></div>
-          <div class="calendar" id="calendar"></div>
-
-          <div class="panel">
-            <p class="panel-title" id="selectedDateTitle"></p>
-
-            <div class="field">
-              <label for="siteInput">現場名</label>
-              <input id="siteInput" type="text" placeholder="現場名" />
+      <div class="workspace">
+        <form class="editor" id="documentForm">
+          <section class="panel">
+            <h2>宛名</h2>
+            <div class="grid two">
+              <label>
+                <span>宛名</span>
+                <input id="customerName" name="customerName" autocomplete="organization" placeholder="株式会社〇〇 御中" />
+              </label>
+              <label>
+                <span>件名</span>
+                <input id="subject" name="subject" placeholder="塗装工事 一式" />
+              </label>
+              <label>
+                <span>請求日 / 発行日</span>
+                <input id="issueDate" name="issueDate" type="date" />
+              </label>
+              <label>
+                <span>支払期限</span>
+                <input id="dueDate" name="dueDate" type="date" />
+              </label>
+              <label>
+                <span>請求書番号</span>
+                <input id="invoiceNumber" name="invoiceNumber" placeholder="INV-2026-001" />
+              </label>
+              <label>
+                <span>領収書番号</span>
+                <input id="receiptNumber" name="receiptNumber" placeholder="REC-2026-001" />
+              </label>
             </div>
-
-            <div class="field">
-              <div class="label">記憶した現場名</div>
-              <div class="history-list" id="siteHistory"></div>
+            <div class="action-row">
+              <button class="secondary" type="button" id="saveCustomerButton">宛名を記憶</button>
+              <button class="secondary" type="button" id="openCustomerButton">宛名一覧</button>
             </div>
+          </section>
 
-            <div class="field">
-              <div class="label">勤務</div>
-              <div class="mark-grid">
-                <button class="choice-button" id="markWork" type="button">○</button>
-                <button class="choice-button" id="markHalf" type="button">△</button>
-              </div>
+          <section class="panel">
+            <h2>発行者</h2>
+            <div class="grid two">
+              <label>
+                <span>屋号 / 会社名</span>
+                <input id="companyName" name="companyName" autocomplete="organization" placeholder="takemototosou" />
+              </label>
+              <label>
+                <span>代表者</span>
+                <input id="companyPerson" name="companyPerson" autocomplete="name" placeholder="竹本 太郎" />
+              </label>
+              <label>
+                <span>住所</span>
+                <input id="companyAddress" name="companyAddress" autocomplete="street-address" placeholder="大阪府..." />
+              </label>
+              <label>
+                <span>電話番号</span>
+                <input id="companyTel" name="companyTel" inputmode="tel" autocomplete="tel" placeholder="090-0000-0000" />
+              </label>
+              <label>
+                <span>登録番号</span>
+                <input id="invoiceRegistration" name="invoiceRegistration" placeholder="T1234567890123" />
+              </label>
+              <label>
+                <span>振込先</span>
+                <input id="bankInfo" name="bankInfo" placeholder="〇〇銀行 〇〇支店 普通 0000000" />
+              </label>
             </div>
+            <label class="toggle-row inline">
+              <input id="taxExempt" name="taxExempt" type="checkbox" />
+              <span>免税事業者として作成する</span>
+            </label>
+          </section>
 
-            <div class="field">
-              <label for="priceInput">日当</label>
-              <input id="priceInput" type="number" inputmode="numeric" step="100" placeholder="日当" />
+          <section class="panel">
+            <div class="section-head">
+              <h2>明細</h2>
+              <button class="icon-button" id="addItemButton" type="button" aria-label="明細を追加">＋</button>
             </div>
+            <div class="items" id="itemsList"></div>
+          </section>
 
-            <div class="field">
-              <div class="label">インボイス</div>
-              <div class="invoice-grid">
-                <button class="choice-button" id="invoiceOn" type="button">有り</button>
-                <button class="choice-button" id="invoiceOff" type="button">無し</button>
-              </div>
-            </div>
+          <section class="panel">
+            <h2>備考</h2>
+            <label>
+              <span>メモ</span>
+              <textarea id="notes" name="notes" rows="4" placeholder="お振込み手数料はご負担ください。"></textarea>
+            </label>
+          </section>
 
-            <div class="save-preview" id="savePreview"></div>
-            <button class="save-button" id="saveButton" type="button">保存</button>
-            <div class="saved-message" id="savedMessage"></div>
+          <section class="sticky-actions">
+            <button class="primary" id="pdfButton" type="button">PDF生成</button>
+            <button class="line" id="lineButton" type="button">LINE共有</button>
+            <button class="secondary" id="backupButton" type="button">バックアップ</button>
+          </section>
+        </form>
+
+        <aside class="preview-wrap">
+          <div class="preview-toolbar">
+            <span id="previewLabel">請求書プレビュー</span>
+            <span id="previewTotal">0円</span>
           </div>
-        </section>
-
-        <section class="hidden" id="summaryPage">
-          <div class="summary-box">
-            <div class="summary-top row">
-              <h2>現場別集計</h2>
-              <button class="small-button" id="toggleAll" type="button">全選択</button>
-            </div>
-            <div id="summaryList"></div>
-            <div class="summary-total">
-              <span>選択合計</span>
-              <span id="selectedTotal">0円</span>
-            </div>
-          </div>
-          <button class="line-button" id="lineButton" type="button">チェックした現場をLINEで共有</button>
-        </section>
+          <article class="paper" id="documentPreview" aria-label="書類プレビュー"></article>
+        </aside>
       </div>
+
+      <section class="panel backup-panel">
+        <div class="section-head">
+          <h2>バックアップ</h2>
+          <button class="secondary danger" id="clearBackupsButton" type="button">全削除</button>
+        </div>
+        <div class="backup-list" id="backupList"></div>
+      </section>
     </main>
-    <script src="app.js" defer></script>
+
+    <dialog class="dialog" id="customerDialog">
+      <div class="dialog-head">
+        <h2>宛名一覧</h2>
+        <button class="icon-button" id="closeCustomerButton" type="button" aria-label="閉じる">×</button>
+      </div>
+      <div class="customer-list" id="customerList"></div>
+    </dialog>
   </body>
 </html>
