@@ -4,12 +4,18 @@ const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", 
 const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 const HEIC_IMAGE_TYPES = new Set(["image/heic", "image/heif"]);
 const HEIC_IMAGE_EXTENSIONS = [".heic", ".heif"];
+const HEIC_CONVERTER_URLS = [
+  "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js",
+  "https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js",
+];
 
 const state = {
   items: [],
 };
 
 const el = {};
+let heicConverterPromise = null;
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -122,12 +128,49 @@ function getJpegFileName(fileName) {
   return `${baseName || "photo"}.jpg`;
 }
 
-async function convertHeicToJpeg(file) {
-  if (typeof window.heic2any !== "function") {
-    throw new Error("HEIC変換ライブラリを読み込めませんでした。通信環境を確認して、もう一度選択してください。");
-  }
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
 
-  const converted = await window.heic2any({
+    const script = existing || document.createElement("script");
+    script.addEventListener("load", () => {
+      script.dataset.loaded = "true";
+      resolve();
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error(`failed to load ${src}`)), { once: true });
+
+    if (!existing) {
+      script.src = src;
+      document.head.append(script);
+    }
+  });
+}
+
+async function ensureHeicConverter() {
+  if (typeof window.heic2any === "function") return window.heic2any;
+  if (!heicConverterPromise) {
+    heicConverterPromise = (async () => {
+      for (const src of HEIC_CONVERTER_URLS) {
+        try {
+          await loadScript(src);
+          if (typeof window.heic2any === "function") return window.heic2any;
+        } catch {
+          // Try the next CDN source.
+        }
+      }
+      throw new Error("HEIC変換ライブラリを読み込めませんでした。通信環境を確認して、もう一度選択してください。");
+    })();
+  }
+  return heicConverterPromise;
+}
+
+async function convertHeicToJpeg(file) {
+  const heic2any = await ensureHeicConverter();
+  const converted = await heic2any({
     blob: file,
     toType: "image/jpeg",
     quality: 0.92,
@@ -135,7 +178,7 @@ async function convertHeicToJpeg(file) {
   const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
 
   if (!(convertedBlob instanceof Blob)) {
-    throw new Error("HEIC画像をJPEGに変換できませんでした。別の写真を選択してください。");
+    throw new Error("HEIC画像をJPEGに変換できませんでした。別の写真を選択してください。 笳・);
   }
 
   return new File([convertedBlob], getJpegFileName(file.name), { type: "image/jpeg" });
