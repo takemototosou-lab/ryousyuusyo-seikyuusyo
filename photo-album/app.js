@@ -1,5 +1,7 @@
 const STORAGE_KEY = "kouji-photo-album:auto";
 const DEFAULT_ITEM_COUNT = 2;
+const MAX_IMAGE_SIDE = 1600;
+const JPEG_QUALITY = 0.78;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 const HEIC_IMAGE_TYPES = new Set(["image/heic", "image/heif"]);
@@ -39,6 +41,19 @@ function safeJsonParse(value, fallback) {
   }
 }
 
+function isQuotaExceeded(error) {
+  return error instanceof DOMException && (
+    error.name === "QuotaExceededError" ||
+    error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    error.code === 22 ||
+    error.code === 1014
+  );
+}
+
+function getQuotaExceededMessage() {
+  return "ブラウザの保存容量がいっぱいです。写真をJPEG圧縮しましたが保存できませんでした。不要な写真枠を削除してから、もう一度選択してください。";
+}
+
 function createItem(item = {}) {
   return {
     id: item.id || createId(),
@@ -72,12 +87,21 @@ function collectMeta() {
 }
 
 function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...collectMeta(), items: state.items }));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...collectMeta(), items: state.items }));
+    return true;
+  } catch (error) {
+    if (isQuotaExceeded(error)) {
+      console.warn(getQuotaExceededMessage(), error);
+      return false;
+    }
+    throw error;
+  }
 }
 
 function updateItem(id, patch) {
   state.items = state.items.map((item) => (item.id === id ? { ...item, ...patch } : item));
-  saveData();
+  return saveData();
 }
 
 function addItem(item = {}) {
@@ -167,13 +191,78 @@ async function convertHeicToJpeg(file) {
   return new File([convertedBlob], getJpegFileName(file.name), { type: "image/jpeg" });
 }
 
-function readFileAsDataUrl(file) {
+function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(reader.result));
-    reader.addEventListener("error", () => reject(new Error("画像ファイルを読み込めませんでした。")));
-    reader.readAsDataURL(file);
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.addEventListener("load", () => resolve({ image, objectUrl }), { once: true });
+    image.addEventListener("error", () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("画像を表示できませんでした。別の写真を選択してください。"));
+    }, { once: true });
+    image.src = objectUrl;
   });
+}
+
+function getScaledSize(width, height) {
+  const longestSide = Math.max(width, height);
+  if (longestSide <= MAX_IMAGE_SIDE) return { width, height };
+
+  const scale = MAX_IMAGE_SIDE / longestSide;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function canvasToJpegDataUrl(canvas) {
+  const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  if (!dataUrl.startsWith("data:image/jpeg")) {
+    throw new Error("画像をJPEGへ圧縮できませんでした。別の写真を選択してください。");
+  }
+  return dataUrl;
+}
+
+async function compressImageToJpegDataUrl(file) {
+  const { image, objectUrl } = await loadImageFromFile(file);
+
+  try {
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!sourceWidth || !sourceHeight) {
+      throw new Error("画像サイズを読み取れませんでした。別の写真を選択してください。");
+    }
+
+    const { width, height } = getScaledSize(sourceWidth, sourceHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      throw new Error("画像を圧縮できませんでした。別の写真を選択してください。");
+    }
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, width, height);
+
+    const dataUrl = canvasToJpegDataUrl(canvas);
+    await verifyImage(dataUrl);
+
+    return {
+      dataUrl,
+      width,
+      height,
+      originalWidth: sourceWidth,
+      originalHeight: sourceHeight,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function verifyImage(dataUrl) {
@@ -185,6 +274,12 @@ function verifyImage(dataUrl) {
   });
 }
 
+function getCompressedFileLabel(originalFile, displayFile, compressedImage) {
+  const compressedLabel = `${compressedImage.width}x${compressedImage.height} JPEG`;
+  if (originalFile.name !== displayFile.name) return `${originalFile.name} → ${displayFile.name} / ${compressedLabel}`;
+  return `${originalFile.name} / ${compressedLabel}`;
+}
+
 async function handlePhoto(id, file) {
   if (!file) return;
 
@@ -194,24 +289,37 @@ async function handlePhoto(id, file) {
     return;
   }
 
+  const sourceIsHeic = isHeicImage(file);
+
   try {
     updateItem(id, {
       photo: "",
       photoError: "",
-      photoStatus: isHeicImage(file) ? "HEIC画像をJPEGに変換しています..." : "画像を読み込んでいます...",
+      photoStatus: sourceIsHeic ? "HEIC画像をJPEGに変換しています..." : "画像を読み込んでいます...",
       fileName: file.name,
     });
     renderAlbum();
 
-    const displayFile = isHeicImage(file) ? await convertHeicToJpeg(file) : file;
-    const dataUrl = await readFileAsDataUrl(displayFile);
-    await verifyImage(dataUrl);
-    updateItem(id, {
-      photo: dataUrl,
+    const displayFile = sourceIsHeic ? await convertHeicToJpeg(file) : file;
+    updateItem(id, { photoStatus: "写真をJPEGに圧縮しています..." });
+    renderAlbum();
+
+    const compressedImage = await compressImageToJpegDataUrl(displayFile);
+    const saved = updateItem(id, {
+      photo: compressedImage.dataUrl,
       photoError: "",
       photoStatus: "",
-      fileName: isHeicImage(file) ? `${file.name} → ${displayFile.name}` : file.name,
+      fileName: getCompressedFileLabel(file, displayFile, compressedImage),
     });
+
+    if (!saved) {
+      updateItem(id, {
+        photo: "",
+        photoError: getQuotaExceededMessage(),
+        photoStatus: "",
+        fileName: file.name,
+      });
+    }
   } catch (error) {
     updateItem(id, { photo: "", photoError: error.message, photoStatus: "", fileName: file.name });
   }
@@ -366,7 +474,10 @@ function runSelfTests() {
   console.assert(chunkItems([1, 2, 3], 2).length === 2, "chunkItems should split into pages");
   console.assert(createBlankItems(3).length === 3, "createBlankItems should create requested rows");
   console.assert(isSupportedImage(new File([""], "sample.jpg", { type: "image/jpeg" })), "JPEG should be supported");
+  console.assert(isSupportedImage(new File([""], "sample.png", { type: "image/png" })), "PNG should be supported");
   console.assert(isSupportedImage(new File([""], "sample.HEIC", { type: "image/heic" })), "HEIC should be accepted for conversion");
+  console.assert(getScaledSize(3200, 2400).width === 1600, "wide images should shrink to 1600px on the long side");
+  console.assert(getScaledSize(1200, 800).width === 1200, "small images should keep their natural size");
 }
 
 function init() {
