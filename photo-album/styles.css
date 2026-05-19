@@ -299,6 +299,10 @@ h1 {
   color: var(--danger);
 }
 
+.photo-placeholder.is-loading {
+  color: var(--accent-dark);
+}
+
 .placeholder-icon {
   display: grid;
   place-items: center;
@@ -309,6 +313,10 @@ h1 {
 
 .photo-placeholder.is-error .placeholder-icon {
   border-color: var(--danger);
+}
+
+.photo-placeholder.is-loading .placeholder-icon {
+  border-color: var(--accent);
 }
 
 .detail-panel {
