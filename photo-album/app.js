@@ -2,6 +2,8 @@ const STORAGE_KEY = "kouji-photo-album:auto";
 const DEFAULT_ITEM_COUNT = 2;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+const HEIC_IMAGE_TYPES = new Set(["image/heic", "image/heif"]);
+const HEIC_IMAGE_EXTENSIONS = [".heic", ".heif"];
 
 const state = {
   items: [],
@@ -39,6 +41,7 @@ function createItem(item = {}) {
     id: item.id || createId(),
     photo: item.photo || "",
     photoError: item.photoError || "",
+    photoStatus: item.photoStatus || "",
     fileName: item.fileName || "",
     work: item.work || "",
     material: item.material || "",
@@ -97,17 +100,45 @@ function removeItem(id) {
   renderAlbum();
 }
 
-function isSupportedImage(file) {
+function hasExtension(file, extensions) {
   const lowerName = file.name.toLowerCase();
-  return SUPPORTED_IMAGE_TYPES.has(file.type) || SUPPORTED_IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+  return extensions.some((extension) => lowerName.endsWith(extension));
 }
 
-function getUnsupportedMessage(file) {
-  const lowerName = file.name.toLowerCase();
-  if (file.type === "image/heic" || file.type === "image/heif" || lowerName.endsWith(".heic") || lowerName.endsWith(".heif")) {
-    return "HEIC/HEIFはこのブラウザで表示できない場合があります。JPEGまたはPNGに変換して選択してください。";
+function isHeicImage(file) {
+  return HEIC_IMAGE_TYPES.has(file.type) || hasExtension(file, HEIC_IMAGE_EXTENSIONS);
+}
+
+function isSupportedImage(file) {
+  return SUPPORTED_IMAGE_TYPES.has(file.type) || hasExtension(file, SUPPORTED_IMAGE_EXTENSIONS) || isHeicImage(file);
+}
+
+function getUnsupportedMessage() {
+  return "この画像形式は表示できません。JPEG、PNG、WebP、GIF、HEICを選択してください。";
+}
+
+function getJpegFileName(fileName) {
+  const baseName = fileName.replace(/\.[^.]+$/, "");
+  return `${baseName || "photo"}.jpg`;
+}
+
+async function convertHeicToJpeg(file) {
+  if (typeof window.heic2any !== "function") {
+    throw new Error("HEIC変換ライブラリを読み込めませんでした。通信環境を確認して、もう一度選択してください。");
   }
-  return "この画像形式は表示できません。JPEG、PNG、WebP、GIFを選択してください。";
+
+  const converted = await window.heic2any({
+    blob: file,
+    toType: "image/jpeg",
+    quality: 0.92,
+  });
+  const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+
+  if (!(convertedBlob instanceof Blob)) {
+    throw new Error("HEIC画像をJPEGに変換できませんでした。別の写真を選択してください。");
+  }
+
+  return new File([convertedBlob], getJpegFileName(file.name), { type: "image/jpeg" });
 }
 
 function readFileAsDataUrl(file) {
@@ -123,7 +154,7 @@ function verifyImage(dataUrl) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.addEventListener("load", resolve, { once: true });
-    image.addEventListener("error", () => reject(new Error("画像を表示できませんでした。JPEGまたはPNGで保存し直してから選択してください。")), { once: true });
+    image.addEventListener("error", () => reject(new Error("画像を表示できませんでした。別の写真を選択してください。")), { once: true });
     image.src = dataUrl;
   });
 }
@@ -132,18 +163,31 @@ async function handlePhoto(id, file) {
   if (!file) return;
 
   if (!isSupportedImage(file)) {
-    updateItem(id, { photo: "", photoError: getUnsupportedMessage(file), fileName: file.name });
+    updateItem(id, { photo: "", photoError: getUnsupportedMessage(), photoStatus: "", fileName: file.name });
     renderAlbum();
     return;
   }
 
   try {
-    updateItem(id, { photoError: "", fileName: file.name });
-    const dataUrl = await readFileAsDataUrl(file);
+    updateItem(id, {
+      photo: "",
+      photoError: "",
+      photoStatus: isHeicImage(file) ? "HEIC画像をJPEGに変換しています..." : "画像を読み込んでいます...",
+      fileName: file.name,
+    });
+    renderAlbum();
+
+    const displayFile = isHeicImage(file) ? await convertHeicToJpeg(file) : file;
+    const dataUrl = await readFileAsDataUrl(displayFile);
     await verifyImage(dataUrl);
-    updateItem(id, { photo: dataUrl, photoError: "", fileName: file.name });
+    updateItem(id, {
+      photo: dataUrl,
+      photoError: "",
+      photoStatus: "",
+      fileName: isHeicImage(file) ? `${file.name} → ${displayFile.name}` : file.name,
+    });
   } catch (error) {
-    updateItem(id, { photo: "", photoError: error.message, fileName: file.name });
+    updateItem(id, { photo: "", photoError: error.message, photoStatus: "", fileName: file.name });
   }
 
   renderAlbum();
@@ -159,10 +203,10 @@ function createField(item, key, label) {
 }
 
 function createPhotoPlaceholder(item) {
-  const message = item.photoError || "写真を選択、またはドラッグ&ドロップ";
+  const message = item.photoError || item.photoStatus || "写真を選択、またはドラッグ&ドロップ";
   const fileName = item.fileName ? `<small>${escapeHtml(item.fileName)}</small>` : "";
   return `
-    <div class="photo-placeholder ${item.photoError ? "is-error" : ""}">
+    <div class="photo-placeholder ${item.photoError ? "is-error" : ""} ${item.photoStatus ? "is-loading" : ""}">
       <span class="placeholder-icon" aria-hidden="true"></span>
       <span>${escapeHtml(message)}</span>
       ${fileName}
@@ -187,7 +231,7 @@ function renderAlbum() {
             <article class="photo-card">
               <label class="photo-drop" data-id="${item.id}">
                 ${photoContent}
-                <input class="photo-input" data-id="${item.id}" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" />
+                <input class="photo-input" data-id="${item.id}" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif" />
               </label>
               <div class="detail-panel">
                 <div class="detail-head">
@@ -267,7 +311,8 @@ function bindAlbumEvents() {
       if (!image.matches(".photo-image")) return;
       updateItem(image.dataset.id, {
         photo: "",
-        photoError: "画像を表示できませんでした。JPEGまたはPNGで保存し直してから選択してください。",
+        photoError: "画像を表示できませんでした。別の写真を選択してください。",
+        photoStatus: "",
       });
       renderAlbum();
     },
@@ -303,7 +348,7 @@ function runSelfTests() {
   console.assert(chunkItems([1, 2, 3], 2).length === 2, "chunkItems should split into pages");
   console.assert(createBlankItems(3).length === 3, "createBlankItems should create requested rows");
   console.assert(isSupportedImage(new File([""], "sample.jpg", { type: "image/jpeg" })), "JPEG should be supported");
-  console.assert(!isSupportedImage(new File([""], "sample.heic", { type: "image/heic" })), "HEIC should show a clear error");
+  console.assert(isSupportedImage(new File([""], "sample.HEIC", { type: "image/heic" })), "HEIC should be accepted for conversion");
 }
 
 function init() {
