@@ -4,12 +4,15 @@ const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", 
 const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 const HEIC_IMAGE_TYPES = new Set(["image/heic", "image/heif"]);
 const HEIC_IMAGE_EXTENSIONS = [".heic", ".heif"];
+const HEIC_CONVERTER_URLS = [
+  "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js",
+  "https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js",
+];
 
-const state = {
-  items: [],
-};
-
+const state = { items: [] };
 const el = {};
+let heicConverterPromise = null;
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -55,9 +58,7 @@ function createBlankItems(count = DEFAULT_ITEM_COUNT) {
 
 function chunkItems(items, size) {
   const pages = [];
-  for (let i = 0; i < items.length; i += size) {
-    pages.push(items.slice(i, i + size));
-  }
+  for (let i = 0; i < items.length; i += size) pages.push(items.slice(i, i + size));
   return pages;
 }
 
@@ -71,13 +72,7 @@ function collectMeta() {
 }
 
 function saveData() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...collectMeta(),
-      items: state.items,
-    }),
-  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...collectMeta(), items: state.items }));
 }
 
 function updateItem(id, patch) {
@@ -93,9 +88,7 @@ function addItem(item = {}) {
 
 function removeItem(id) {
   state.items = state.items.filter((item) => item.id !== id);
-  if (state.items.length === 0) {
-    state.items = createBlankItems(1);
-  }
+  if (state.items.length === 0) state.items = createBlankItems(1);
   saveData();
   renderAlbum();
 }
@@ -122,16 +115,49 @@ function getJpegFileName(fileName) {
   return `${baseName || "photo"}.jpg`;
 }
 
-async function convertHeicToJpeg(file) {
-  if (typeof window.heic2any !== "function") {
-    throw new Error("HEIC変換ライブラリを読み込めませんでした。通信環境を確認して、もう一度選択してください。");
-  }
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
 
-  const converted = await window.heic2any({
-    blob: file,
-    toType: "image/jpeg",
-    quality: 0.92,
+    const script = existing || document.createElement("script");
+    script.addEventListener("load", () => {
+      script.dataset.loaded = "true";
+      resolve();
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error(`failed to load ${src}`)), { once: true });
+
+    if (!existing) {
+      script.src = src;
+      document.head.append(script);
+    }
   });
+}
+
+async function ensureHeicConverter() {
+  if (typeof window.heic2any === "function") return window.heic2any;
+  if (!heicConverterPromise) {
+    heicConverterPromise = (async () => {
+      for (const src of HEIC_CONVERTER_URLS) {
+        try {
+          await loadScript(src);
+          if (typeof window.heic2any === "function") return window.heic2any;
+        } catch {
+          // Try the next CDN source.
+        }
+      }
+      throw new Error("HEIC変換ライブラリを読み込めませんでした。通信環境を確認して、もう一度選択してください。");
+    })();
+  }
+  return heicConverterPromise;
+}
+
+async function convertHeicToJpeg(file) {
+  const heic2any = await ensureHeicConverter();
+  const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
   const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
 
   if (!(convertedBlob instanceof Blob)) {
@@ -218,50 +244,46 @@ function renderAlbum() {
   const meta = collectMeta();
   const pages = chunkItems(state.items, 2);
 
-  el.printArea.innerHTML = pages
-    .map((pageItems, pageIndex) => {
-      const rows = pageItems
-        .map((item, itemIndex) => {
-          const number = pageIndex * 2 + itemIndex + 1;
-          const photoContent = item.photo && !item.photoError
-            ? `<img class="photo-image" data-id="${item.id}" src="${item.photo}" alt="工事写真 No.${number}" />`
-            : createPhotoPlaceholder(item);
-
-          return `
-            <article class="photo-card">
-              <label class="photo-drop" data-id="${item.id}">
-                ${photoContent}
-                <input class="photo-input" data-id="${item.id}" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif" />
-              </label>
-              <div class="detail-panel">
-                <div class="detail-head">
-                  <strong>No.${number}</strong>
-                  <button class="remove-button no-print" data-remove-id="${item.id}" type="button" title="削除" aria-label="No.${number}を削除">×</button>
-                </div>
-                ${createField(item, "work", "工事内容")}
-                ${createField(item, "material", "使用材料")}
-                ${createField(item, "place", "場所")}
-              </div>
-            </article>
-          `;
-        })
-        .join("");
+  el.printArea.innerHTML = pages.map((pageItems, pageIndex) => {
+    const rows = pageItems.map((item, itemIndex) => {
+      const number = pageIndex * 2 + itemIndex + 1;
+      const photoContent = item.photo && !item.photoError
+        ? `<img class="photo-image" data-id="${item.id}" src="${item.photo}" alt="工事写真 No.${number}" />`
+        : createPhotoPlaceholder(item);
 
       return `
-        <section class="page">
-          <header class="page-header">
-            <h2>${escapeHtml(meta.albumTitle)}</h2>
-            <dl>
-              ${meta.projectName ? `<div><dt>工事名</dt><dd>${escapeHtml(meta.projectName)}</dd></div>` : ""}
-              ${meta.albumDate ? `<div><dt>日付</dt><dd>${escapeHtml(meta.albumDate)}</dd></div>` : ""}
-              ${meta.contractorName ? `<div><dt>施工者</dt><dd>${escapeHtml(meta.contractorName)}</dd></div>` : ""}
-            </dl>
-          </header>
-          <div class="photo-list">${rows}</div>
-        </section>
+        <article class="photo-card">
+          <label class="photo-drop" data-id="${item.id}">
+            ${photoContent}
+            <input class="photo-input" data-id="${item.id}" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif" />
+          </label>
+          <div class="detail-panel">
+            <div class="detail-head">
+              <strong>No.${number}</strong>
+              <button class="remove-button no-print" data-remove-id="${item.id}" type="button" title="削除" aria-label="No.${number}を削除">×</button>
+            </div>
+            ${createField(item, "work", "工事内容")}
+            ${createField(item, "material", "使用材料")}
+            ${createField(item, "place", "場所")}
+          </div>
+        </article>
       `;
-    })
-    .join("");
+    }).join("");
+
+    return `
+      <section class="page">
+        <header class="page-header">
+          <h2>${escapeHtml(meta.albumTitle)}</h2>
+          <dl>
+            ${meta.projectName ? `<div><dt>工事名</dt><dd>${escapeHtml(meta.projectName)}</dd></div>` : ""}
+            ${meta.albumDate ? `<div><dt>日付</dt><dd>${escapeHtml(meta.albumDate)}</dd></div>` : ""}
+            ${meta.contractorName ? `<div><dt>施工者</dt><dd>${escapeHtml(meta.contractorName)}</dd></div>` : ""}
+          </dl>
+        </header>
+        <div class="photo-list">${rows}</div>
+      </section>
+    `;
+  }).join("");
 }
 
 function bindAlbumEvents() {
@@ -304,20 +326,16 @@ function bindAlbumEvents() {
     handlePhoto(dropTarget.dataset.id, event.dataTransfer?.files?.[0]);
   });
 
-  el.printArea.addEventListener(
-    "error",
-    (event) => {
-      const image = event.target;
-      if (!image.matches(".photo-image")) return;
-      updateItem(image.dataset.id, {
-        photo: "",
-        photoError: "画像を表示できませんでした。別の写真を選択してください。",
-        photoStatus: "",
-      });
-      renderAlbum();
-    },
-    true,
-  );
+  el.printArea.addEventListener("error", (event) => {
+    const image = event.target;
+    if (!image.matches(".photo-image")) return;
+    updateItem(image.dataset.id, {
+      photo: "",
+      photoError: "画像を表示できませんでした。別の写真を選択してください。",
+      photoStatus: "",
+    });
+    renderAlbum();
+  }, true);
 }
 
 function loadData() {
