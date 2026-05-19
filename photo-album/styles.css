@@ -1,0 +1,431 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --ink: #171717;
+  --muted: #656565;
+  --line: #1f1f1f;
+  --soft-line: #d6d6d6;
+  --accent: #17684f;
+  --accent-dark: #0f4f3b;
+  --danger: #b42318;
+  --shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+  --radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+
+input {
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  outline: none;
+}
+
+label span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.app-shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top)) 14px 40px;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: clamp(1.6rem, 6vw, 2.4rem);
+  line-height: 1.1;
+}
+
+.lead {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border-radius: var(--radius);
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.button-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.primary {
+  color: #fff;
+  background: var(--accent);
+}
+
+.primary:hover {
+  background: var(--accent-dark);
+}
+
+.secondary {
+  border: 1px solid var(--soft-line);
+  color: var(--ink);
+  background: #fff;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.print-area {
+  display: grid;
+  gap: 24px;
+}
+
+.page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 10mm;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.page-header {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.page-header h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.page-header dl {
+  display: flex;
+  justify-content: center;
+  gap: 10px 22px;
+  flex-wrap: wrap;
+  margin: 0;
+  color: #222;
+  font-size: 11px;
+}
+
+.page-header dl div {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.page-header dt {
+  margin: 0;
+  font-weight: 800;
+}
+
+.page-header dd {
+  margin: 0;
+}
+
+.photo-list {
+  display: grid;
+  gap: 5mm;
+}
+
+.photo-card {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(62mm, 1fr);
+  height: 120mm;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.photo-drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  background: #f8f8f8;
+  cursor: pointer;
+}
+
+.photo-drop img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.photo-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.photo-placeholder {
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  color: #6f6f6f;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.placeholder-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px dashed #a0a0a0;
+}
+
+.detail-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 11mm;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.remove-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--danger);
+  background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.remove-button:hover {
+  background: #fff0ef;
+}
+
+.photo-field {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.photo-field:last-child {
+  border-bottom: 0;
+}
+
+.photo-field span {
+  margin-bottom: 4px;
+  color: #111;
+  font-size: 0.82rem;
+}
+
+@media (min-width: 760px) {
+  .app-shell {
+    padding: calc(24px + env(safe-area-inset-top)) 22px 52px;
+  }
+
+  .settings-panel {
+    grid-template-columns: 1fr 1.2fr 160px 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .page {
+    width: 100%;
+    min-height: auto;
+    padding: 12px;
+  }
+
+  .photo-card {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .photo-drop {
+    min-height: 270px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .detail-panel {
+    min-height: 320px;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #printArea,
+  #printArea * {
+    visibility: visible;
+  }
+
+  #printArea {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .app-shell {
+    width: auto;
+    padding: 0;
+  }
+
+  .print-area {
+    display: block;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0;
+    padding: 10mm;
+    box-shadow: none;
+    page-break-after: always;
+  }
+
+  .page:last-child {
+    page-break-after: auto;
+  }
+
+  .photo-input {
+    display: none;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
