@@ -1,4 +1,7 @@
 const STORAGE_KEY = "kouji-photo-album:auto";
+const PHOTO_DB_NAME = "kouji-photo-album:photos";
+const PHOTO_DB_VERSION = 1;
+const PHOTO_STORE_NAME = "photos";
 const DEFAULT_ITEM_COUNT = 2;
 const MAX_IMAGE_SIDE = 1600;
 const JPEG_QUALITY = 0.78;
@@ -15,6 +18,7 @@ const HEIC_CONVERTER_URLS = [
 const state = { items: [] };
 const el = {};
 let heicConverterPromise = null;
+let photoDbPromise = null;
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -51,15 +55,31 @@ function isQuotaExceeded(error) {
 }
 
 function getQuotaExceededMessage() {
-  return "ブラウザの保存容量がいっぱいです。写真をJPEG圧縮しましたが保存できませんでした。不要な写真枠を削除してから、もう一度選択してください。";
+  return "ブラウザの写真保存容量がいっぱいです。写真はJPEG圧縮済みですが保存できませんでした。不要な写真枠を削除してから、もう一度選択してください。";
 }
 
 function createItem(item = {}) {
+  const legacyPhoto = typeof item.photo === "string" && item.photo.startsWith("data:image/") ? item.photo : "";
+
   return {
     id: item.id || createId(),
-    photo: item.photo || "",
+    hasPhoto: Boolean(item.hasPhoto || legacyPhoto),
+    photoUrl: "",
+    legacyPhoto,
     photoError: item.photoError || "",
     photoStatus: item.photoStatus || "",
+    fileName: item.fileName || "",
+    work: item.work || "",
+    material: item.material || "",
+    place: item.place || "",
+  };
+}
+
+function serializeItem(item) {
+  return {
+    id: item.id,
+    hasPhoto: Boolean(item.hasPhoto),
+    photoError: item.photoError || "",
     fileName: item.fileName || "",
     work: item.work || "",
     material: item.material || "",
@@ -88,11 +108,14 @@ function collectMeta() {
 
 function saveData() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...collectMeta(), items: state.items }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      ...collectMeta(),
+      items: state.items.map(serializeItem),
+    }));
     return true;
   } catch (error) {
     if (isQuotaExceeded(error)) {
-      console.warn(getQuotaExceededMessage(), error);
+      console.warn("文字情報を保存できませんでした。", error);
       return false;
     }
     throw error;
@@ -104,6 +127,20 @@ function updateItem(id, patch) {
   return saveData();
 }
 
+function getItem(id) {
+  return state.items.find((item) => item.id === id);
+}
+
+function revokePhotoUrl(item) {
+  if (item?.photoUrl?.startsWith("blob:")) URL.revokeObjectURL(item.photoUrl);
+}
+
+function updatePhotoUrl(id, photoUrl) {
+  const item = getItem(id);
+  revokePhotoUrl(item);
+  updateItem(id, { photoUrl, hasPhoto: Boolean(photoUrl), photoError: "", photoStatus: "" });
+}
+
 function addItem(item = {}) {
   state.items = [...state.items, createItem(item)];
   saveData();
@@ -111,10 +148,86 @@ function addItem(item = {}) {
 }
 
 function removeItem(id) {
-  state.items = state.items.filter((item) => item.id !== id);
+  const item = getItem(id);
+  revokePhotoUrl(item);
+  state.items = state.items.filter((photoItem) => photoItem.id !== id);
   if (state.items.length === 0) state.items = createBlankItems(1);
   saveData();
+  deletePhotoBlob(id).catch((error) => console.warn("写真を削除できませんでした。", error));
   renderAlbum();
+}
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.addEventListener("success", () => resolve(request.result), { once: true });
+    request.addEventListener("error", () => reject(request.error), { once: true });
+  });
+}
+
+function openPhotoDb() {
+  if (!window.indexedDB) {
+    return Promise.reject(new Error("このブラウザでは写真保存用のIndexedDBを利用できません。"));
+  }
+
+  if (!photoDbPromise) {
+    photoDbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(PHOTO_DB_NAME, PHOTO_DB_VERSION);
+
+      request.addEventListener("upgradeneeded", () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(PHOTO_STORE_NAME)) {
+          db.createObjectStore(PHOTO_STORE_NAME, { keyPath: "id" });
+        }
+      });
+      request.addEventListener("success", () => resolve(request.result), { once: true });
+      request.addEventListener("error", () => reject(request.error), { once: true });
+    });
+  }
+
+  return photoDbPromise;
+}
+
+async function withPhotoStore(mode, callback) {
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PHOTO_STORE_NAME, mode);
+    const store = transaction.objectStore(PHOTO_STORE_NAME);
+    let callbackResult;
+
+    transaction.addEventListener("complete", () => resolve(callbackResult), { once: true });
+    transaction.addEventListener("abort", () => reject(transaction.error), { once: true });
+    transaction.addEventListener("error", () => reject(transaction.error), { once: true });
+
+    try {
+      callbackResult = callback(store);
+    } catch (error) {
+      transaction.abort();
+      reject(error);
+    }
+  });
+}
+
+async function savePhotoBlob(id, blob, metadata = {}) {
+  await withPhotoStore("readwrite", (store) => {
+    store.put({
+      id,
+      blob,
+      type: blob.type || "image/jpeg",
+      size: blob.size,
+      savedAt: new Date().toISOString(),
+      ...metadata,
+    });
+  });
+}
+
+async function getPhotoRecord(id) {
+  return withPhotoStore("readonly", (store) => requestToPromise(store.get(id)));
+}
+
+async function deletePhotoBlob(id) {
+  await withPhotoStore("readwrite", (store) => {
+    store.delete(id);
+  });
 }
 
 function hasExtension(file, extensions) {
@@ -216,15 +329,19 @@ function getScaledSize(width, height) {
   };
 }
 
-function canvasToJpegDataUrl(canvas) {
-  const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
-  if (!dataUrl.startsWith("data:image/jpeg")) {
-    throw new Error("画像をJPEGへ圧縮できませんでした。別の写真を選択してください。");
-  }
-  return dataUrl;
+function canvasToJpegBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("画像をJPEGへ圧縮できませんでした。別の写真を選択してください。"));
+        return;
+      }
+      resolve(blob);
+    }, "image/jpeg", JPEG_QUALITY);
+  });
 }
 
-async function compressImageToJpegDataUrl(file) {
+async function compressImageToJpegBlob(file) {
   const { image, objectUrl } = await loadImageFromFile(file);
 
   try {
@@ -250,11 +367,16 @@ async function compressImageToJpegDataUrl(file) {
     context.imageSmoothingQuality = "high";
     context.drawImage(image, 0, 0, width, height);
 
-    const dataUrl = canvasToJpegDataUrl(canvas);
-    await verifyImage(dataUrl);
+    const blob = await canvasToJpegBlob(canvas);
+    const photoUrl = URL.createObjectURL(blob);
+    try {
+      await verifyImage(photoUrl);
+    } finally {
+      URL.revokeObjectURL(photoUrl);
+    }
 
     return {
-      dataUrl,
+      blob,
       width,
       height,
       originalWidth: sourceWidth,
@@ -265,13 +387,22 @@ async function compressImageToJpegDataUrl(file) {
   }
 }
 
-function verifyImage(dataUrl) {
+function verifyImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.addEventListener("load", resolve, { once: true });
     image.addEventListener("error", () => reject(new Error("画像を表示できませんでした。別の写真を選択してください。")), { once: true });
-    image.src = dataUrl;
+    image.src = src;
   });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(",");
+  const mimeType = header.match(/data:([^;]+)/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
 }
 
 function getCompressedFileLabel(originalFile, displayFile, compressedImage) {
@@ -280,20 +411,80 @@ function getCompressedFileLabel(originalFile, displayFile, compressedImage) {
   return `${originalFile.name} / ${compressedLabel}`;
 }
 
+async function createPhotoUrlFromBlob(blob) {
+  const photoUrl = URL.createObjectURL(blob);
+  try {
+    await verifyImage(photoUrl);
+    return photoUrl;
+  } catch (error) {
+    URL.revokeObjectURL(photoUrl);
+    throw error;
+  }
+}
+
+async function hydrateStoredPhotos() {
+  let changed = false;
+
+  await Promise.all(state.items.map(async (item) => {
+    if (item.legacyPhoto) {
+      try {
+        const blob = dataUrlToBlob(item.legacyPhoto);
+        await savePhotoBlob(item.id, blob, { migratedFromLocalStorage: true });
+        item.photoUrl = await createPhotoUrlFromBlob(blob);
+        item.hasPhoto = true;
+        item.legacyPhoto = "";
+        item.photoError = "";
+        changed = true;
+        return;
+      } catch (error) {
+        item.photoError = isQuotaExceeded(error) ? getQuotaExceededMessage() : "保存済み写真を移行できませんでした。写真を選択し直してください。";
+        item.hasPhoto = false;
+        item.legacyPhoto = "";
+        changed = true;
+        return;
+      }
+    }
+
+    if (!item.hasPhoto) return;
+
+    try {
+      const record = await getPhotoRecord(item.id);
+      if (!record?.blob) {
+        item.hasPhoto = false;
+        item.photoError = "保存済み写真が見つかりませんでした。写真を選択し直してください。";
+        changed = true;
+        return;
+      }
+      item.photoUrl = await createPhotoUrlFromBlob(record.blob);
+      item.photoError = "";
+    } catch (error) {
+      item.hasPhoto = false;
+      item.photoError = "保存済み写真を読み込めませんでした。写真を選択し直してください。";
+      changed = true;
+    }
+  }));
+
+  if (changed) saveData();
+  renderAlbum();
+}
+
 async function handlePhoto(id, file) {
   if (!file) return;
 
   if (!isSupportedImage(file)) {
-    updateItem(id, { photo: "", photoError: getUnsupportedMessage(), photoStatus: "", fileName: file.name });
+    updateItem(id, { hasPhoto: false, photoUrl: "", photoError: getUnsupportedMessage(), photoStatus: "", fileName: file.name });
     renderAlbum();
     return;
   }
 
   const sourceIsHeic = isHeicImage(file);
+  const item = getItem(id);
+  revokePhotoUrl(item);
 
   try {
     updateItem(id, {
-      photo: "",
+      hasPhoto: false,
+      photoUrl: "",
       photoError: "",
       photoStatus: sourceIsHeic ? "HEIC画像をJPEGに変換しています..." : "画像を読み込んでいます...",
       fileName: file.name,
@@ -304,24 +495,32 @@ async function handlePhoto(id, file) {
     updateItem(id, { photoStatus: "写真をJPEGに圧縮しています..." });
     renderAlbum();
 
-    const compressedImage = await compressImageToJpegDataUrl(displayFile);
-    const saved = updateItem(id, {
-      photo: compressedImage.dataUrl,
-      photoError: "",
-      photoStatus: "",
+    const compressedImage = await compressImageToJpegBlob(displayFile);
+    await savePhotoBlob(id, compressedImage.blob, {
       fileName: getCompressedFileLabel(file, displayFile, compressedImage),
+      width: compressedImage.width,
+      height: compressedImage.height,
+      originalWidth: compressedImage.originalWidth,
+      originalHeight: compressedImage.originalHeight,
+      quality: JPEG_QUALITY,
+      maxSide: MAX_IMAGE_SIDE,
     });
 
-    if (!saved) {
-      updateItem(id, {
-        photo: "",
-        photoError: getQuotaExceededMessage(),
-        photoStatus: "",
-        fileName: file.name,
-      });
-    }
+    const photoUrl = await createPhotoUrlFromBlob(compressedImage.blob);
+    updatePhotoUrl(id, photoUrl);
+    updateItem(id, {
+      fileName: getCompressedFileLabel(file, displayFile, compressedImage),
+      photoError: "",
+      photoStatus: "",
+    });
   } catch (error) {
-    updateItem(id, { photo: "", photoError: error.message, photoStatus: "", fileName: file.name });
+    updateItem(id, {
+      hasPhoto: false,
+      photoUrl: "",
+      photoError: isQuotaExceeded(error) ? getQuotaExceededMessage() : error.message,
+      photoStatus: "",
+      fileName: file.name,
+    });
   }
 
   renderAlbum();
@@ -355,8 +554,8 @@ function renderAlbum() {
   el.printArea.innerHTML = pages.map((pageItems, pageIndex) => {
     const rows = pageItems.map((item, itemIndex) => {
       const number = pageIndex * 2 + itemIndex + 1;
-      const photoContent = item.photo && !item.photoError
-        ? `<img class="photo-image" data-id="${item.id}" src="${item.photo}" alt="工事写真 No.${number}" />`
+      const photoContent = item.photoUrl && item.hasPhoto && !item.photoError
+        ? `<img class="photo-image" data-id="${item.id}" src="${item.photoUrl}" alt="工事写真 No.${number}" />`
         : createPhotoPlaceholder(item);
 
       return `
@@ -438,7 +637,8 @@ function bindAlbumEvents() {
     const image = event.target;
     if (!image.matches(".photo-image")) return;
     updateItem(image.dataset.id, {
-      photo: "",
+      hasPhoto: false,
+      photoUrl: "",
       photoError: "画像を表示できませんでした。別の写真を選択してください。",
       photoStatus: "",
     });
@@ -478,6 +678,7 @@ function runSelfTests() {
   console.assert(isSupportedImage(new File([""], "sample.HEIC", { type: "image/heic" })), "HEIC should be accepted for conversion");
   console.assert(getScaledSize(3200, 2400).width === 1600, "wide images should shrink to 1600px on the long side");
   console.assert(getScaledSize(1200, 800).width === 1200, "small images should keep their natural size");
+  console.assert(serializeItem({ id: "1", photoUrl: "blob:test", legacyPhoto: "data:image/jpeg;base64,a", hasPhoto: true }).photoUrl === undefined, "photo URLs should not be saved to localStorage");
 }
 
 function init() {
@@ -488,6 +689,7 @@ function init() {
   loadData();
   bindEvents();
   renderAlbum();
+  hydrateStoredPhotos();
   runSelfTests();
 }
 
