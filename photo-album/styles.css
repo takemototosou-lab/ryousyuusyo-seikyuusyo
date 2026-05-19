@@ -20,6 +20,7 @@
 
 html {
   min-height: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
 }
@@ -27,6 +28,7 @@ html {
 body {
   margin: 0;
   min-height: 100%;
+  overflow-x: hidden;
   color: var(--ink);
   background: var(--bg);
   font-size: 16px;
@@ -172,14 +174,18 @@ h1 {
 
 .print-area {
   display: grid;
+  width: 100%;
   gap: 24px;
+  overflow-x: hidden;
 }
 
 .page {
-  width: 210mm;
-  min-height: 297mm;
+  width: min(100%, 210mm);
+  max-width: calc(100vw - 28px);
+  min-height: auto;
   margin: 0 auto;
-  padding: 10mm;
+  padding: clamp(12px, 4.76%, 10mm);
+  overflow: hidden;
   background: #fff;
   box-shadow: var(--shadow);
 }
@@ -229,8 +235,8 @@ h1 {
 
 .photo-card {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(62mm, 1fr);
-  height: 120mm;
+  grid-template-columns: minmax(0, 2fr) minmax(190px, 1fr);
+  height: clamp(300px, 37vw, 120mm);
   overflow: hidden;
   border: 1px solid var(--line);
   background: #fff;
@@ -247,12 +253,20 @@ h1 {
   border-right: 1px solid var(--line);
   background: #f8f8f8;
   cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.photo-drop.is-dragging {
+  background: #eaf6f1;
+  box-shadow: inset 0 0 0 3px var(--accent);
 }
 
 .photo-drop img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center;
 }
 
 .photo-input {
@@ -266,9 +280,23 @@ h1 {
   display: grid;
   gap: 8px;
   place-items: center;
+  max-width: min(320px, 86%);
+  padding: 12px;
   color: #6f6f6f;
   font-size: 0.9rem;
   font-weight: 800;
+  text-align: center;
+}
+
+.photo-placeholder small {
+  color: #777;
+  font-size: 0.76rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.photo-placeholder.is-error {
+  color: var(--danger);
 }
 
 .placeholder-icon {
@@ -277,6 +305,10 @@ h1 {
   width: 42px;
   height: 42px;
   border: 2px dashed #a0a0a0;
+}
+
+.photo-placeholder.is-error .placeholder-icon {
+  border-color: var(--danger);
 }
 
 .detail-panel {
@@ -353,8 +385,7 @@ h1 {
   }
 
   .page {
-    width: 100%;
-    min-height: auto;
+    max-width: calc(100vw - 24px);
     padding: 12px;
   }
 
@@ -375,7 +406,9 @@ h1 {
 }
 
 @media print {
+  html,
   body {
+    overflow: visible;
     background: #fff;
   }
 
@@ -391,7 +424,8 @@ h1 {
   #printArea {
     position: absolute;
     inset: 0 auto auto 0;
-    width: 100%;
+    width: 190mm;
+    overflow: visible;
   }
 
   .no-print {
@@ -408,16 +442,23 @@ h1 {
   }
 
   .page {
-    width: 210mm;
-    min-height: 297mm;
+    width: 190mm;
+    max-width: none;
+    min-height: 277mm;
     margin: 0;
-    padding: 10mm;
+    padding: 0;
+    overflow: hidden;
     box-shadow: none;
     page-break-after: always;
   }
 
   .page:last-child {
     page-break-after: auto;
+  }
+
+  .photo-card {
+    grid-template-columns: minmax(0, 2fr) 62mm;
+    height: 120mm;
   }
 
   .photo-input {

@@ -1,5 +1,7 @@
 const STORAGE_KEY = "kouji-photo-album:auto";
 const DEFAULT_ITEM_COUNT = 2;
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
 const state = {
   items: [],
@@ -36,6 +38,8 @@ function createItem(item = {}) {
   return {
     id: item.id || createId(),
     photo: item.photo || "",
+    photoError: item.photoError || "",
+    fileName: item.fileName || "",
     work: item.work || "",
     material: item.material || "",
     place: item.place || "",
@@ -73,8 +77,8 @@ function saveData() {
   );
 }
 
-function updateItem(id, key, value) {
-  state.items = state.items.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+function updateItem(id, patch) {
+  state.items = state.items.map((item) => (item.id === id ? { ...item, ...patch } : item));
   saveData();
 }
 
@@ -93,15 +97,56 @@ function removeItem(id) {
   renderAlbum();
 }
 
-function handlePhoto(id, file) {
+function isSupportedImage(file) {
+  const lowerName = file.name.toLowerCase();
+  return SUPPORTED_IMAGE_TYPES.has(file.type) || SUPPORTED_IMAGE_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+}
+
+function getUnsupportedMessage(file) {
+  const lowerName = file.name.toLowerCase();
+  if (file.type === "image/heic" || file.type === "image/heif" || lowerName.endsWith(".heic") || lowerName.endsWith(".heif")) {
+    return "HEIC/HEIFはこのブラウザで表示できない場合があります。JPEGまたはPNGに変換して選択してください。";
+  }
+  return "この画像形式は表示できません。JPEG、PNG、WebP、GIFを選択してください。";
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(new Error("画像ファイルを読み込めませんでした。")));
+    reader.readAsDataURL(file);
+  });
+}
+
+function verifyImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", () => reject(new Error("画像を表示できませんでした。JPEGまたはPNGで保存し直してから選択してください。")), { once: true });
+    image.src = dataUrl;
+  });
+}
+
+async function handlePhoto(id, file) {
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    updateItem(id, "photo", reader.result);
+  if (!isSupportedImage(file)) {
+    updateItem(id, { photo: "", photoError: getUnsupportedMessage(file), fileName: file.name });
     renderAlbum();
-  });
-  reader.readAsDataURL(file);
+    return;
+  }
+
+  try {
+    updateItem(id, { photoError: "", fileName: file.name });
+    const dataUrl = await readFileAsDataUrl(file);
+    await verifyImage(dataUrl);
+    updateItem(id, { photo: dataUrl, photoError: "", fileName: file.name });
+  } catch (error) {
+    updateItem(id, { photo: "", photoError: error.message, fileName: file.name });
+  }
+
+  renderAlbum();
 }
 
 function createField(item, key, label) {
@@ -110,6 +155,18 @@ function createField(item, key, label) {
       <span>${label}</span>
       <textarea data-field="${key}" data-id="${item.id}" placeholder="${label}を入力">${escapeHtml(item[key])}</textarea>
     </label>
+  `;
+}
+
+function createPhotoPlaceholder(item) {
+  const message = item.photoError || "写真を選択、またはドラッグ&ドロップ";
+  const fileName = item.fileName ? `<small>${escapeHtml(item.fileName)}</small>` : "";
+  return `
+    <div class="photo-placeholder ${item.photoError ? "is-error" : ""}">
+      <span class="placeholder-icon" aria-hidden="true"></span>
+      <span>${escapeHtml(message)}</span>
+      ${fileName}
+    </div>
   `;
 }
 
@@ -122,15 +179,15 @@ function renderAlbum() {
       const rows = pageItems
         .map((item, itemIndex) => {
           const number = pageIndex * 2 + itemIndex + 1;
-          const photoContent = item.photo
-            ? `<img src="${item.photo}" alt="工事写真 No.${number}" />`
-            : `<div class="photo-placeholder"><span class="placeholder-icon" aria-hidden="true"></span><span>写真を選択</span></div>`;
+          const photoContent = item.photo && !item.photoError
+            ? `<img class="photo-image" data-id="${item.id}" src="${item.photo}" alt="工事写真 No.${number}" />`
+            : createPhotoPlaceholder(item);
 
           return `
             <article class="photo-card">
-              <label class="photo-drop">
+              <label class="photo-drop" data-id="${item.id}">
                 ${photoContent}
-                <input class="photo-input" data-id="${item.id}" type="file" accept="image/*" />
+                <input class="photo-input" data-id="${item.id}" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" />
               </label>
               <div class="detail-panel">
                 <div class="detail-head">
@@ -167,7 +224,7 @@ function bindAlbumEvents() {
   el.printArea.addEventListener("input", (event) => {
     const target = event.target;
     if (!target.matches("[data-field]")) return;
-    updateItem(target.dataset.id, target.dataset.field, target.value);
+    updateItem(target.dataset.id, { [target.dataset.field]: target.value });
   });
 
   el.printArea.addEventListener("change", (event) => {
@@ -181,6 +238,41 @@ function bindAlbumEvents() {
     if (!button) return;
     removeItem(button.dataset.removeId);
   });
+
+  el.printArea.addEventListener("dragover", (event) => {
+    const dropTarget = event.target.closest(".photo-drop");
+    if (!dropTarget) return;
+    event.preventDefault();
+    dropTarget.classList.add("is-dragging");
+  });
+
+  el.printArea.addEventListener("dragleave", (event) => {
+    const dropTarget = event.target.closest(".photo-drop");
+    if (!dropTarget || dropTarget.contains(event.relatedTarget)) return;
+    dropTarget.classList.remove("is-dragging");
+  });
+
+  el.printArea.addEventListener("drop", (event) => {
+    const dropTarget = event.target.closest(".photo-drop");
+    if (!dropTarget) return;
+    event.preventDefault();
+    dropTarget.classList.remove("is-dragging");
+    handlePhoto(dropTarget.dataset.id, event.dataTransfer?.files?.[0]);
+  });
+
+  el.printArea.addEventListener(
+    "error",
+    (event) => {
+      const image = event.target;
+      if (!image.matches(".photo-image")) return;
+      updateItem(image.dataset.id, {
+        photo: "",
+        photoError: "画像を表示できませんでした。JPEGまたはPNGで保存し直してから選択してください。",
+      });
+      renderAlbum();
+    },
+    true,
+  );
 }
 
 function loadData() {
@@ -210,6 +302,8 @@ function bindEvents() {
 function runSelfTests() {
   console.assert(chunkItems([1, 2, 3], 2).length === 2, "chunkItems should split into pages");
   console.assert(createBlankItems(3).length === 3, "createBlankItems should create requested rows");
+  console.assert(isSupportedImage(new File([""], "sample.jpg", { type: "image/jpeg" })), "JPEG should be supported");
+  console.assert(!isSupportedImage(new File([""], "sample.heic", { type: "image/heic" })), "HEIC should show a clear error");
 }
 
 function init() {
